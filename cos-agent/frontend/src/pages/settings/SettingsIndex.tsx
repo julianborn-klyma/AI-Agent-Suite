@@ -5,7 +5,8 @@ export function SettingsIndexPage() {
     <div style={{ maxWidth: 560 }}>
       <h2 style={{ marginTop: 0 }}>Einstellungen</h2>
       <p style={{ color: "var(--muted)", marginTop: "-0.25rem" }}>
-        Persönliche Anbindungen an externe Dienste.
+        Hier richtest du persönliche Anbindungen ein — unabhängig von den
+        Agent-Configs in der Administration.
       </p>
       <Link
         to="/settings/connections"
@@ -21,7 +22,7 @@ export function SettingsIndexPage() {
           fontWeight: 600,
         }}
       >
-        Verbindungen
+        Verbindungen (Google & Notion)
         <div
           style={{
             marginTop: "0.35rem",
@@ -30,7 +31,7 @@ export function SettingsIndexPage() {
             color: "var(--muted)",
           }}
         >
-          Google (Gmail &amp; Drive) und Notion-Token (<code>secret_…</code>)
+          OAuth für Google, Internal-Token für Notion (<code>secret_…</code>)
         </div>
       </Link>
     </div>

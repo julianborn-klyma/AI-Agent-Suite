@@ -5,7 +5,8 @@
   "tasks": {
     "dev": "deno run -A --watch main.ts",
     "test": "deno test -A",
-    "migrate": "deno run -A db/migrate.ts"
+    "migrate": "deno run -A db/migrate.ts",
+    "playwright:seed": "deno run -A scripts/playwright_seed.ts"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.10",

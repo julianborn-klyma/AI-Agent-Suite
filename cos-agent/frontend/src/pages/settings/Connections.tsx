@@ -139,7 +139,9 @@ export function ConnectionsPage() {
         <span style={{ color: "var(--muted)" }}> / </span>
         <span style={{ color: "var(--text)", fontWeight: 600 }}>Verbindungen</span>
       </nav>
-      <h2 style={{ marginTop: 0 }}>Verbindungen</h2>
+      <h2 style={{ marginTop: 0 }} data-testid="connections-title">
+        Verbindungen
+      </h2>
       <p style={{ color: "var(--muted)", marginTop: "-0.25rem" }}>
         Verknüpfe externe Dienste für den Agenten. Notion: Internal-Token von{" "}
         <a href="https://www.notion.so/my-integrations" target="_blank" rel="noreferrer">

@@ -64,6 +64,7 @@ export function LoginPage() {
           MVP: nur E-Mail (aktiver User in cos_users).
         </p>
         <label
+          htmlFor="login-email-field"
           style={{
             display: "block",
             marginBottom: "0.35rem",
@@ -74,8 +75,10 @@ export function LoginPage() {
           E-Mail
         </label>
         <input
+          id="login-email-field"
           type="email"
           autoComplete="username"
+          data-testid="login-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -100,6 +103,7 @@ export function LoginPage() {
         )}
         <button
           type="submit"
+          data-testid="login-submit"
           disabled={pending}
           style={{
             width: "100%",

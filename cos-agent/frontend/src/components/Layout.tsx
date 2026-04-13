@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.ts";
 import { logout } from "../lib/auth.ts";
 
@@ -17,8 +17,18 @@ const navLinkStyle = ({
   background: isActive ? "rgba(37, 99, 235, 0.08)" : "transparent",
 });
 
+const quickLinkStyle: CSSProperties = {
+  fontSize: "0.88rem",
+  fontWeight: 600,
+  padding: "0.35rem 0.65rem",
+  borderRadius: 6,
+  textDecoration: "none",
+};
+
 export function Layout() {
   const { user, isAdmin } = useAuth();
+  const location = useLocation();
+  const onSettings = location.pathname.startsWith("/settings");
 
   return (
     <div
@@ -50,9 +60,30 @@ export function Layout() {
         >
           cos-agent
         </div>
-        <nav style={{ flex: 1 }}>
-          <NavLink to="/chat" style={navLinkStyle} end>
-            Chat
+        <nav
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              margin: "0 0 0.35rem",
+              padding: "0 0.75rem",
+              fontSize: "0.7rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              color: "var(--muted)",
+            }}
+          >
+            Konto & Dienste
+          </div>
+          <NavLink to="/settings" style={navLinkStyle} end>
+            Einstellungen
+          </NavLink>
+          <NavLink to="/settings/connections" style={navLinkStyle}>
+            Verbindungen (Google, Notion)
           </NavLink>
           <div
             style={{
@@ -64,13 +95,10 @@ export function Layout() {
               color: "var(--muted)",
             }}
           >
-            Einstellungen
+            Chat
           </div>
-          <NavLink to="/settings" style={navLinkStyle} end>
-            Übersicht
-          </NavLink>
-          <NavLink to="/settings/connections" style={navLinkStyle}>
-            Verbindungen
+          <NavLink to="/chat" style={navLinkStyle} end>
+            Chat
           </NavLink>
           {isAdmin && (
             <>
@@ -134,9 +162,58 @@ export function Layout() {
           overflow: "auto",
           padding: "1.25rem",
           maxWidth: "100%",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
         }}
       >
-        <Outlet />
+        <div
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "0.5rem 1rem",
+            marginBottom: "1rem",
+            padding: "0.65rem 0.85rem",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+          }}
+        >
+          <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
+            Externe Dienste (Gmail, Drive, Notion):
+          </span>
+          <NavLink
+            to="/settings"
+            end
+            style={({ isActive }) => ({
+              ...quickLinkStyle,
+              color: "var(--accent)",
+              background: isActive ? "rgba(37, 99, 235, 0.12)" : "transparent",
+            })}
+          >
+            Einstellungen
+          </NavLink>
+          <NavLink
+            to="/settings/connections"
+            style={({ isActive }) => ({
+              ...quickLinkStyle,
+              color: "var(--accent)",
+              background: isActive ? "rgba(37, 99, 235, 0.12)" : "transparent",
+            })}
+          >
+            Verbindungen
+          </NavLink>
+          {onSettings && (
+            <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+              Du bist hier.
+            </span>
+          )}
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <Outlet />
+        </div>
       </main>
     </div>
   );

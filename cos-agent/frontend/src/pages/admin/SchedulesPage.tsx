@@ -20,61 +20,70 @@ export function SchedulesPage() {
     queryFn: () => api.get<ScheduleRow[]>("/api/admin/schedules"),
   });
 
-  if (q.isPending) return <p style={{ color: "var(--muted)" }}>Laden…</p>;
+  if (q.isPending) {
+    return (
+      <div className="co-admin-page">
+        <p className="co-muted">Laden…</p>
+      </div>
+    );
+  }
   if (q.error) {
     return (
-      <p style={{ color: "var(--danger)" }}>
-        {q.error instanceof Error ? q.error.message : "Fehler"}
-      </p>
+      <div className="co-admin-page">
+        <p style={{ color: "var(--danger)" }}>
+          {q.error instanceof Error ? q.error.message : "Fehler"}
+        </p>
+      </div>
     );
   }
 
   return (
-    <div>
-      <h3 style={{ marginTop: 0 }}>Schedules</h3>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.85rem",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
-            <th style={{ padding: "0.45rem" }}>User</th>
-            <th style={{ padding: "0.45rem" }}>Cron</th>
-            <th style={{ padding: "0.45rem" }}>Kanal</th>
-            <th style={{ padding: "0.45rem" }}>Aktiv</th>
-            <th style={{ padding: "0.45rem" }}>last_run</th>
-          </tr>
-        </thead>
-        <tbody>
-          {q.data?.map((s) => (
-            <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
-              <td style={{ padding: "0.45rem" }}>
-                {s.user_name}
-                <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-                  {s.user_email}
-                </div>
-              </td>
-              <td style={{ padding: "0.45rem" }}>{s.cron_expression}</td>
-              <td style={{ padding: "0.45rem" }}>{s.delivery_channel}</td>
-              <td style={{ padding: "0.45rem" }}>{s.is_active ? "ja" : "nein"}</td>
-              <td style={{ padding: "0.45rem" }}>
-                {s.last_run ?? "—"}
-                {s.last_run_status && (
-                  <span style={{ color: "var(--muted)" }}>
-                    {" "}
-                    ({s.last_run_status})
-                  </span>
-                )}
-              </td>
+    <div className="co-admin-page">
+      <h2 className="co-admin-h2">Schedules</h2>
+      <p className="co-admin-lead">Geplante Jobs und letzte Ausführung.</p>
+      <div className="co-table-wrap">
+        <table className="co-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Cron</th>
+              <th>Kanal</th>
+              <th>Aktiv</th>
+              <th>last_run</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {q.data?.map((s) => (
+              <tr key={s.id}>
+                <td>
+                  {s.user_name}
+                  <div className="co-muted" style={{ fontSize: "0.8rem", marginTop: "0.15rem" }}>
+                    {s.user_email}
+                  </div>
+                </td>
+                <td>
+                  <code style={{ fontSize: "0.8rem" }}>{s.cron_expression}</code>
+                </td>
+                <td>{s.delivery_channel}</td>
+                <td>
+                  <span className={s.is_active ? "co-badge co-badge--success" : "co-badge"}>
+                    {s.is_active ? "ja" : "nein"}
+                  </span>
+                </td>
+                <td>
+                  {s.last_run ?? "—"}
+                  {s.last_run_status && (
+                    <span className="co-muted" style={{ fontSize: "0.8rem" }}>
+                      {" "}
+                      ({s.last_run_status})
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

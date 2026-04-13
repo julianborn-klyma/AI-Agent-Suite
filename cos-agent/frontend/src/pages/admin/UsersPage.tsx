@@ -17,48 +17,43 @@ export function UsersPage() {
     queryFn: () => api.get<AdminUser[]>("/api/admin/users"),
   });
 
-  if (q.isPending) return <p style={{ color: "var(--muted)" }}>Laden…</p>;
+  if (q.isPending) {
+    return (
+      <div className="co-admin-page">
+        <p className="co-muted">Laden…</p>
+      </div>
+    );
+  }
   if (q.error) {
     return (
-      <p style={{ color: "var(--danger)" }}>
-        {q.error instanceof Error ? q.error.message : "Fehler"}
-      </p>
+      <div className="co-admin-page">
+        <p style={{ color: "var(--danger)" }}>
+          {q.error instanceof Error ? q.error.message : "Fehler"}
+        </p>
+      </div>
     );
   }
 
   return (
-    <div>
-      <h3 style={{ marginTop: 0 }}>Users</h3>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.9rem",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
-            <th style={{ padding: "0.5rem" }}>Name</th>
-            <th style={{ padding: "0.5rem" }}>E-Mail</th>
-            <th style={{ padding: "0.5rem" }}>Rolle</th>
-            <th style={{ padding: "0.5rem" }}>Aktiv</th>
-          </tr>
-        </thead>
-        <tbody>
-          {q.data?.map((u) => (
-            <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
-              <td style={{ padding: "0.5rem" }}>
-                <Link to={`/admin/users/${u.id}`}>{u.name}</Link>
-              </td>
-              <td style={{ padding: "0.5rem" }}>{u.email}</td>
-              <td style={{ padding: "0.5rem" }}>{u.role}</td>
-              <td style={{ padding: "0.5rem" }}>{u.is_active ? "ja" : "nein"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="co-admin-page">
+      <h2 className="co-admin-h2">Users</h2>
+      <p className="co-admin-lead">Klick auf eine Karte für Kontext-Keys und Inline-Bearbeitung.</p>
+      <div className="co-user-grid">
+        {q.data?.map((u) => (
+          <Link key={u.id} to={`/admin/users/${u.id}`} className="co-user-card">
+            <div className="co-user-card-name">{u.name}</div>
+            <div className="co-user-card-meta">{u.email}</div>
+            <div className="co-user-card-meta" style={{ marginTop: "0.5rem" }}>
+              <span className={u.is_active ? "co-badge co-badge--success" : "co-badge"}>
+                {u.is_active ? "Aktiv" : "Inaktiv"}
+              </span>
+              <span className="co-badge" style={{ marginLeft: "0.35rem" }}>
+                {u.role}
+              </span>
+            </div>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
