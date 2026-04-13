@@ -1,0 +1,119 @@
+import type { FormEvent } from "react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ApiError, login } from "../lib/auth.ts";
+
+export function LoginPage() {
+  const nav = useNavigate();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setPending(true);
+    try {
+      await login(email.trim());
+      nav("/chat", { replace: true });
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? (() => {
+              try {
+                const j = JSON.parse(err.message) as { error?: string };
+                return j.error ?? err.message;
+              } catch {
+                return err.message || "Anmeldung fehlgeschlagen";
+              }
+            })()
+          : "Anmeldung fehlgeschlagen";
+      setError(msg);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+        background: "var(--bg)",
+      }}
+    >
+      <form
+        onSubmit={onSubmit}
+        style={{
+          width: "100%",
+          maxWidth: 400,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "1.75rem",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
+      >
+        <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.35rem" }}>
+          Anmelden
+        </h1>
+        <p style={{ margin: "0 0 1.25rem", color: "var(--muted)", fontSize: "0.9rem" }}>
+          MVP: nur E-Mail (aktiver User in cos_users).
+        </p>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "0.35rem",
+            fontSize: "0.85rem",
+            fontWeight: 500,
+          }}
+        >
+          E-Mail
+        </label>
+        <input
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          style={{
+            width: "100%",
+            padding: "0.55rem 0.65rem",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            marginBottom: "1rem",
+          }}
+        />
+        {error && (
+          <p
+            style={{
+              color: "var(--danger)",
+              fontSize: "0.9rem",
+              margin: "0 0 1rem",
+            }}
+          >
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={pending}
+          style={{
+            width: "100%",
+            padding: "0.6rem",
+            border: "none",
+            borderRadius: 6,
+            background: pending ? "var(--muted)" : "var(--accent)",
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        >
+          {pending ? "…" : "Anmelden"}
+        </button>
+      </form>
+    </div>
+  );
+}
