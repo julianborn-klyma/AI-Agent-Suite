@@ -14,7 +14,8 @@ function calendarDaysBetween(now: Date, then: Date): number {
 /**
  * Relative Zeit auf Deutsch, z. B. "vor 5 Minuten", "gestern".
  */
-export function relativeTime(dateStr: string): string {
+export function relativeTime(input: string | Date): string {
+  const dateStr = typeof input === "string" ? input : input.toISOString();
   const then = new Date(dateStr).getTime();
   if (Number.isNaN(then)) {
     return "";

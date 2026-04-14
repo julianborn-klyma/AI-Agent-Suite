@@ -22,6 +22,8 @@ export type AgentContext = {
   connectedTools: string[];
   /** Letzte Chat-Turns (User/Assistant), chronologisch. */
   recentHistory: LlmMessage[];
+  /** Optional: Task-Typ für Modellwahl (`selectModel`). */
+  currentTask?: string;
 };
 
 export type SubAgentResult = {
@@ -29,6 +31,8 @@ export type SubAgentResult = {
   success: boolean;
   data?: unknown;
   error?: string;
+  /** Kurztext / Quellenhinweise (z. B. Web Search). */
+  summary?: string;
   learningCandidates?: LearningCandidate[];
   durationMs?: number;
 };

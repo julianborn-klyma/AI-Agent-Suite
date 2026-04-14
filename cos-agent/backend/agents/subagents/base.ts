@@ -1,7 +1,8 @@
 import type { DatabaseClient } from "../../db/databaseClient.ts";
-import type { LlmClient } from "../../services/llm/llmTypes.ts";
+import type { LlmClient, LlmToolsInput } from "../../services/llm/llmTypes.ts";
 import type { ToolExecutor } from "../../services/tools/toolExecutor.ts";
-import { CHAT_MODEL } from "../constants.ts";
+import type { AgentModel } from "../modelSelector.ts";
+import { MODEL_IDS, selectModel } from "../modelSelector.ts";
 import type { AgentContext, SubAgentResult } from "../types.ts";
 
 export abstract class BaseSubAgent {
@@ -35,16 +36,40 @@ export abstract class BaseSubAgent {
     userMessage: string;
     context: AgentContext;
     tools?: string[];
+    model?: AgentModel;
+    complexity?: "low" | "medium" | "high";
+    useWebSearch?: boolean;
   }): Promise<string> {
-    const allowed = params.tools?.length
-      ? params.context.connectedTools.filter((t) => params.tools!.includes(t))
-      : params.context.connectedTools;
-    const defs = this.toolExecutor.getToolDefinitions(allowed);
+    const named = params.tools ?? [];
+    const enabledForDefs = params.context.connectedTools.filter((t) =>
+      t !== "web_search" &&
+      (named.length === 0 || named.includes(t))
+    );
+    const defs = this.toolExecutor.getToolDefinitions(enabledForDefs);
+    const llmTools: LlmToolsInput = [];
+    if (
+      params.useWebSearch &&
+      params.context.connectedTools.includes("web_search")
+    ) {
+      llmTools.push("web_search");
+    }
+    llmTools.push(...defs);
+
+    const selectedModel = params.model
+      ? MODEL_IDS[params.model]
+      : selectModel({
+        taskType: params.context.currentTask ?? "chat",
+        complexity: params.complexity ?? "medium",
+        requiresWebSearch: params.useWebSearch ?? false,
+        isRetry: false,
+        agentType: this.agentType,
+      });
+
     const res = await this.llm.chat({
-      model: CHAT_MODEL,
+      model: selectedModel,
       system: params.systemPrompt,
       messages: [{ role: "user", content: params.userMessage }],
-      tools: defs.length > 0 ? defs : undefined,
+      tools: llmTools.length > 0 ? llmTools : undefined,
       metadata: { user_id: params.context.userId, source: "cos-agent" },
     });
     return res.content ?? "";

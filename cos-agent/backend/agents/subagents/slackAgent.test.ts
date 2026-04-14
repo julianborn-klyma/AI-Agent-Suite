@@ -1,5 +1,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import type { DatabaseClient, Learning } from "../../db/databaseClient.ts";
+import { testAuthDbStubMethods } from "../../db/databaseClientTestAuthStubs.ts";
+import { taskQueueTestStubs } from "../../db/taskQueueTestStubs.ts";
 import { documentTestStubs, scheduleTestStubs } from "../../db/documentTestStubs.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "../../services/llm/llmTypes.ts";
 import { ToolExecutor } from "../../services/tools/toolExecutor.ts";
@@ -7,6 +9,25 @@ import type { AgentContext } from "../types.ts";
 import { SlackAgent } from "./slackAgent.ts";
 
 class FakeDb implements DatabaseClient {
+  countLoginAttemptsByIpSince =
+    testAuthDbStubMethods.countLoginAttemptsByIpSince;
+  insertLoginAttempt = testAuthDbStubMethods.insertLoginAttempt;
+  incrementFailedLogin = testAuthDbStubMethods.incrementFailedLogin;
+  recordSuccessfulLogin = testAuthDbStubMethods.recordSuccessfulLogin;
+  updateUserPasswordHash = testAuthDbStubMethods.updateUserPasswordHash;
+  insertAuditLog = testAuthDbStubMethods.insertAuditLog;
+  listAuditLog = testAuthDbStubMethods.listAuditLog;
+  findUserWithPasswordById = testAuthDbStubMethods.findUserWithPasswordById;
+  getTenant = testAuthDbStubMethods.getTenant;
+  getTenantBySlug = testAuthDbStubMethods.getTenantBySlug;
+  listTenants = testAuthDbStubMethods.listTenants;
+  insertTenant = testAuthDbStubMethods.insertTenant;
+  updateTenant = testAuthDbStubMethods.updateTenant;
+  updateTenantCredentials = testAuthDbStubMethods.updateTenantCredentials;
+  getTenantForUser = testAuthDbStubMethods.getTenantForUser;
+  setOnboardingCompleted = testAuthDbStubMethods.setOnboardingCompleted;
+  getUserOnboardingSnapshot = testAuthDbStubMethods.getUserOnboardingSnapshot;
+
   async findAgentConfigForUser(): Promise<null> {
     return null;
   }
@@ -89,6 +110,13 @@ class FakeDb implements DatabaseClient {
     scheduleTestStubs.purgeUserContextSummariesOlderThan;
   purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
   recordScheduleRun = scheduleTestStubs.recordScheduleRun;
+
+  insertTask = taskQueueTestStubs.insertTask;
+  getTasks = taskQueueTestStubs.getTasks;
+  getTask = taskQueueTestStubs.getTask;
+  getNextPendingTask = taskQueueTestStubs.getNextPendingTask;
+  updateTaskStatus = taskQueueTestStubs.updateTaskStatus;
+  cancelTask = taskQueueTestStubs.cancelTask;
 }
 
 class StubLlm implements LlmClient {

@@ -13,6 +13,7 @@ export function useAuth(): {
   user: MeUser | null;
   isLoading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
 } {
   const q = useQuery({
     queryKey: ["me"],
@@ -25,5 +26,6 @@ export function useAuth(): {
     user: q.data ?? null,
     isLoading: q.isPending,
     isAdmin: q.data?.role === "admin",
+    isSuperAdmin: q.data?.role === "superadmin",
   };
 }

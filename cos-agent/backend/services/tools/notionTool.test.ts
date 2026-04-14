@@ -1,9 +1,30 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { DatabaseClient, Learning } from "../../db/databaseClient.ts";
+import { testAuthDbStubMethods } from "../../db/databaseClientTestAuthStubs.ts";
+import { taskQueueTestStubs } from "../../db/taskQueueTestStubs.ts";
 import { documentTestStubs, scheduleTestStubs } from "../../db/documentTestStubs.ts";
 import { notionTool } from "./notionTool.ts";
 
 class FakeDb implements DatabaseClient {
+  countLoginAttemptsByIpSince =
+    testAuthDbStubMethods.countLoginAttemptsByIpSince;
+  insertLoginAttempt = testAuthDbStubMethods.insertLoginAttempt;
+  incrementFailedLogin = testAuthDbStubMethods.incrementFailedLogin;
+  recordSuccessfulLogin = testAuthDbStubMethods.recordSuccessfulLogin;
+  updateUserPasswordHash = testAuthDbStubMethods.updateUserPasswordHash;
+  insertAuditLog = testAuthDbStubMethods.insertAuditLog;
+  listAuditLog = testAuthDbStubMethods.listAuditLog;
+  findUserWithPasswordById = testAuthDbStubMethods.findUserWithPasswordById;
+  getTenant = testAuthDbStubMethods.getTenant;
+  getTenantBySlug = testAuthDbStubMethods.getTenantBySlug;
+  listTenants = testAuthDbStubMethods.listTenants;
+  insertTenant = testAuthDbStubMethods.insertTenant;
+  updateTenant = testAuthDbStubMethods.updateTenant;
+  updateTenantCredentials = testAuthDbStubMethods.updateTenantCredentials;
+  getTenantForUser = testAuthDbStubMethods.getTenantForUser;
+  setOnboardingCompleted = testAuthDbStubMethods.setOnboardingCompleted;
+  getUserOnboardingSnapshot = testAuthDbStubMethods.getUserOnboardingSnapshot;
+
   contexts: { key: string; value: string }[] = [];
 
   async findAgentConfigForUser(): Promise<null> {
@@ -61,13 +82,13 @@ class FakeDb implements DatabaseClient {
 
   async insertOauthState(_params: {
     state: string;
-    userId: string;
+    userId: string | null;
     provider: string;
   }): Promise<void> {}
 
   async consumeOauthState(
     _state: string,
-  ): Promise<{ userId: string; provider: string } | null> {
+  ): Promise<{ userId: string | null; provider: string } | null> {
     return null;
   }
 
@@ -106,6 +127,13 @@ class FakeDb implements DatabaseClient {
     scheduleTestStubs.purgeUserContextSummariesOlderThan;
   purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
   recordScheduleRun = scheduleTestStubs.recordScheduleRun;
+
+  insertTask = taskQueueTestStubs.insertTask;
+  getTasks = taskQueueTestStubs.getTasks;
+  getTask = taskQueueTestStubs.getTask;
+  getNextPendingTask = taskQueueTestStubs.getNextPendingTask;
+  updateTaskStatus = taskQueueTestStubs.updateTaskStatus;
+  cancelTask = taskQueueTestStubs.cancelTask;
 }
 
 const userId = "00000000-0000-4000-8000-000000000001";

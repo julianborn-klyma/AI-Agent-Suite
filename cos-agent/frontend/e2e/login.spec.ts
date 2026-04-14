@@ -13,8 +13,9 @@ test.describe("Login", () => {
   test("Unbekannte E-Mail → Fehlermeldung", async ({ page }) => {
     await openLoginForm(page);
     await page.getByLabel("E-Mail").fill("definitiv-unbekannt-xyz@test.local");
+    await page.getByTestId("login-password").fill("irgendwas");
     await page.getByTestId("login-submit").click();
-    await expect(page.getByText("Anmeldung fehlgeschlagen")).toBeVisible({
+    await expect(page.getByText(/Email oder Passwort falsch/)).toBeVisible({
       timeout: 10_000,
     });
   });

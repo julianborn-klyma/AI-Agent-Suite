@@ -2,6 +2,12 @@ import type { AppEnv } from "./config/env.ts";
 import type { AppDependencies } from "./app_deps.ts";
 import { corsHeaders, preflightResponse } from "./middleware/cors.ts";
 import {
+  apiRateLimiter,
+  loginRateLimiter,
+  superAdminRateLimiter,
+} from "./middleware/rateLimiter.ts";
+import { addSecurityHeaders } from "./middleware/securityHeaders.ts";
+import {
   handleChatHistoryGet,
   handleChatPost,
   handleChatSessionDelete,
@@ -28,7 +34,15 @@ import {
   handleAdminUsersCreate,
   handleAdminUsersList,
 } from "./routes/admin/users.ts";
-import { handleAuthLogin } from "./routes/auth.ts";
+import {
+  handleAuthChangePassword,
+  handleAuthLogin,
+  handleAuthSetInitialPassword,
+} from "./routes/auth.ts";
+import {
+  handleAuthGoogleLoginCallback,
+  handleAuthGoogleLoginGet,
+} from "./routes/authGoogleLogin.ts";
 import {
   handleConnectionsDelete,
   handleConnectionsGet,
@@ -42,6 +56,12 @@ import {
 } from "./routes/connections.ts";
 import { handleHealth } from "./routes/health.ts";
 import { handleMe } from "./routes/me.ts";
+import {
+  handleOnboardingCompletePost,
+  handleOnboardingProfilePost,
+  handleOnboardingSkipPost,
+  handleOnboardingStatusGet,
+} from "./routes/onboarding.ts";
 import {
   handleDocumentAsk,
   handleDocumentDelete,
@@ -67,17 +87,30 @@ import {
   handleEmailStyleGet,
   handleEmailStyleLearnPost,
 } from "./routes/email-style.ts";
+import {
+  handlePromptEngineerClassify,
+  handlePromptEngineerOptimize,
+  handlePromptEngineerSearchQueries,
+} from "./routes/prompt-engineer.ts";
+import {
+  handleTaskDelete,
+  handleTaskGet,
+  handleTasksList,
+  handleTasksPost,
+} from "./routes/tasks.ts";
+import { dispatchSuperAdmin } from "./routes/superadmin/tenants.ts";
 
 function withCors(req: Request, env: AppEnv, res: Response): Response {
   const extra = corsHeaders(req, env);
   if (extra === null) {
     return new Response("CORS nicht erlaubt", { status: 403 });
   }
-  const headers = new Headers(res.headers);
+  const secured = addSecurityHeaders(res);
+  const headers = new Headers(secured.headers);
   for (const [k, v] of Object.entries(extra)) {
     headers.set(k, v);
   }
-  return new Response(res.body, { status: res.status, headers });
+  return new Response(secured.body, { status: secured.status, headers });
 }
 
 function missingDepsResponse(): Response {
@@ -175,9 +208,24 @@ export function createRequestHandler(
 ) {
   return async (req: Request): Promise<Response> => {
     const pre = preflightResponse(req, env);
-    if (pre) return pre;
+    if (pre) return addSecurityHeaders(pre);
 
     const url = new URL(req.url);
+
+    if (
+      url.pathname.startsWith("/api/admin/") ||
+      url.pathname.startsWith("/api/superadmin/")
+    ) {
+      const rl = superAdminRateLimiter(req);
+      if (rl) return withCors(req, env, rl);
+    } else if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      const rl = loginRateLimiter(req);
+      if (rl) return withCors(req, env, rl);
+    } else if (url.pathname.startsWith("/api/")) {
+      const rl = apiRateLimiter(req);
+      if (rl) return withCors(req, env, rl);
+    }
+
     let res: Response;
 
     const sessionDelete = url.pathname.match(
@@ -192,8 +240,48 @@ export function createRequestHandler(
       } else {
         res = await handleAuthLogin(req, env, deps);
       }
+    } else if (
+      url.pathname === "/api/auth/change-password" && req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleAuthChangePassword(req, env, deps);
+      }
+    } else if (
+      url.pathname === "/api/auth/set-initial-password" && req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleAuthSetInitialPassword(req, env, deps);
+      }
     } else if (url.pathname === "/api/me") {
       res = await handleMe(req, env, deps);
+    } else if (url.pathname === "/api/onboarding/status" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleOnboardingStatusGet(req, env, deps);
+      }
+    } else if (url.pathname === "/api/onboarding/complete" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleOnboardingCompletePost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/onboarding/profile" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleOnboardingProfilePost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/onboarding/skip" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleOnboardingSkipPost(req, env, deps);
+      }
     } else if (url.pathname === "/api/learnings" && req.method === "GET") {
       if (!deps) {
         res = missingDepsResponse();
@@ -284,6 +372,57 @@ export function createRequestHandler(
       } else {
         res = await handleDocumentsList(req, env, deps);
       }
+    } else if (url.pathname === "/api/tasks" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleTasksPost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/tasks" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleTasksList(req, env, deps);
+      }
+    } else if (url.pathname.match(/^\/api\/tasks\/([^/]+)$/)) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const m = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+        const taskId = m![1]!;
+        if (req.method === "GET") {
+          res = await handleTaskGet(req, env, deps, taskId);
+        } else if (req.method === "DELETE") {
+          res = await handleTaskDelete(req, env, deps, taskId);
+        } else {
+          res = new Response("Method Not Allowed", { status: 405 });
+        }
+      }
+    } else if (
+      url.pathname === "/api/prompt-engineer/optimize" && req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handlePromptEngineerOptimize(req, env, deps);
+      }
+    } else if (
+      url.pathname === "/api/prompt-engineer/search-queries" &&
+      req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handlePromptEngineerSearchQueries(req, env, deps);
+      }
+    } else if (
+      url.pathname === "/api/prompt-engineer/classify" && req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handlePromptEngineerClassify(req, env, deps);
+      }
     } else if (url.pathname === "/api/chat" && req.method === "POST") {
       if (!deps) {
         res = missingDepsResponse();
@@ -312,6 +451,20 @@ export function createRequestHandler(
           deps,
           sessionDelete[1] as string,
         );
+      }
+    } else if (
+      url.pathname === "/api/auth/google/login/callback" && req.method === "GET"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleAuthGoogleLoginCallback(req, env, deps);
+      }
+    } else if (url.pathname === "/api/auth/google/login" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleAuthGoogleLoginGet(req, env, deps);
       }
     } else if (
       url.pathname === "/api/auth/google/callback" && req.method === "GET"
@@ -422,6 +575,13 @@ export function createRequestHandler(
         res = missingDepsResponse();
       } else {
         res = await handleSchedulePatch(req, env, deps, m![1]!);
+      }
+    } else if (url.pathname.startsWith("/api/superadmin/")) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const sr = await dispatchSuperAdmin(req, env, deps, url.pathname);
+        res = sr ?? new Response("Not Found", { status: 404 });
       }
     } else if (url.pathname.startsWith("/api/admin/")) {
       if (!deps) {

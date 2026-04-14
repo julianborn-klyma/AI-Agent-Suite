@@ -1,6 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { fetchTasksList, TASKS_QUERY_KEY } from "../hooks/useTaskQueue.ts";
+import { isLoggedIn } from "../lib/auth.ts";
 import { AgentStructureInfoModal } from "./AgentStructureInfoModal.tsx";
 import { useAuth } from "../hooks/useAuth.ts";
 import { logout } from "../lib/auth.ts";
@@ -20,8 +23,21 @@ const navLinkStyle = ({
 });
 
 export function Layout() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const [agentInfoOpen, setAgentInfoOpen] = useState(false);
+  const tasksQ = useQuery({
+    queryKey: TASKS_QUERY_KEY,
+    queryFn: fetchTasksList,
+    enabled: isLoggedIn(),
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d?.length) return false;
+      return d.some((t) => t.status === "pending" || t.status === "running")
+        ? 10_000
+        : false;
+    },
+  });
+  const pendingBadge = (tasksQ.data ?? []).filter((t) => t.status === "pending").length;
 
   return (
     <div
@@ -79,6 +95,9 @@ export function Layout() {
           <NavLink to="/settings/connections" style={navLinkStyle}>
             Verbindungen
           </NavLink>
+          <NavLink to="/settings/password" style={navLinkStyle}>
+            Passwort
+          </NavLink>
           <NavLink to="/settings/schedules" style={navLinkStyle}>
             Jobs &amp; Automation
           </NavLink>
@@ -102,6 +121,10 @@ export function Layout() {
           </div>
           <NavLink to="/chat" style={navLinkStyle} end>
             Chat
+          </NavLink>
+          <NavLink to="/tasks" style={navLinkStyle}>
+            Task-Queue
+            {pendingBadge > 0 ? ` (${pendingBadge})` : ""}
           </NavLink>
           <div
             style={{
@@ -172,6 +195,29 @@ export function Layout() {
           >
             Abmelden
           </button>
+          {isSuperAdmin && (
+            <div
+              style={{
+                marginTop: "0.85rem",
+                borderTop: "1px solid var(--border)",
+                paddingTop: "0.55rem",
+              }}
+            >
+              <NavLink
+                to="/superadmin/tenants"
+                style={{
+                  display: "block",
+                  fontSize: "0.72rem",
+                  letterSpacing: "0.04em",
+                  color: "var(--muted)",
+                  textDecoration: "none",
+                  padding: "0.15rem 0",
+                }}
+              >
+                ⚡ Super Admin
+              </NavLink>
+            </div>
+          )}
         </div>
       </aside>
       <main

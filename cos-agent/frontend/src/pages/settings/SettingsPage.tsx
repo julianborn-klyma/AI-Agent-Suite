@@ -24,6 +24,14 @@ export function SettingsPage() {
       </p>
 
       <nav style={{ marginTop: "1.5rem" }} aria-label="Einstellungen">
+        <Link to="/onboarding" style={linkCard}>
+          <div className="co-card-title" style={{ marginBottom: "0.25rem" }}>
+            Onboarding wiederholen
+          </div>
+          <span style={{ fontSize: "0.9rem", color: "var(--muted)" }}>
+            Profil, Verbindungen und Einstieg erneut durchlaufen
+          </span>
+        </Link>
         <Link to="/settings/connections" style={linkCard}>
           <div className="co-card-title" style={{ marginBottom: "0.25rem" }}>
             Verbindungen

@@ -1,9 +1,11 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { PromptEngineerPanel } from "../components/PromptEngineerPanel.tsx";
 import { useAuth } from "../hooks/useAuth.ts";
 import { useChat } from "../hooks/useChat.ts";
+import { api } from "../lib/api.ts";
 import { relativeTime } from "../lib/time.ts";
 
 function previewShort(text: string, max = 60): string {
@@ -19,6 +21,7 @@ function toolPillLabel(raw: string): string {
 }
 
 export function ChatPage() {
+  const location = useLocation();
   const { user } = useAuth();
   const {
     sessions,
@@ -35,6 +38,9 @@ export function ChatPage() {
   } = useChat();
 
   const [input, setInput] = useState("");
+  const [promptModalOpen, setPromptModalOpen] = useState(false);
+  const [pePanelKey, setPePanelKey] = useState(0);
+  const [complexityHigh, setComplexityHigh] = useState(false);
   const [hoverSessionId, setHoverSessionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -47,6 +53,18 @@ export function ChatPage() {
   }, []);
 
   useEffect(() => {
+    const st = location.state as
+      | { taskQueueDraft?: string; chatDraft?: string }
+      | null;
+    const draft = (typeof st?.chatDraft === "string" && st.chatDraft.trim()
+      ? st.chatDraft
+      : st?.taskQueueDraft) ?? "";
+    if (typeof draft === "string" && draft.trim()) {
+      setInput(draft);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isLoading]);
 
@@ -57,6 +75,26 @@ export function ChatPage() {
     const lineH = 22;
     const maxH = lineH * 5;
     el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+  }, [input]);
+
+  useEffect(() => {
+    const t = input.trim();
+    if (!t) {
+      setComplexityHigh(false);
+      return;
+    }
+    const id = window.setTimeout(async () => {
+      try {
+        const r = await api.post<{ complexity: string }>(
+          "/api/prompt-engineer/classify",
+          { message: t },
+        );
+        setComplexityHigh(r.complexity === "high");
+      } catch {
+        setComplexityHigh(false);
+      }
+    }, 500);
+    return () => window.clearTimeout(id);
   }, [input]);
 
   const showEmptyWelcome =
@@ -450,6 +488,29 @@ export function ChatPage() {
             background: "var(--surface)",
           }}
         >
+          {complexityHigh && (
+            <button
+              type="button"
+              onClick={() => {
+                setPePanelKey((k) => k + 1);
+                setPromptModalOpen(true);
+              }}
+              style={{
+                display: "block",
+                marginBottom: "0.35rem",
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.72rem",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                color: "var(--muted)",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              ✨ Komplex — Prompt optimieren empfohlen
+            </button>
+          )}
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
             <textarea
               ref={textareaRef}
@@ -470,6 +531,26 @@ export function ChatPage() {
                 lineHeight: 1.4,
               }}
             />
+            <button
+              type="button"
+              title="Prompt optimieren"
+              onClick={() => {
+                setPePanelKey((k) => k + 1);
+                setPromptModalOpen(true);
+              }}
+              disabled={isLoading}
+              style={{
+                padding: "0.55rem 0.65rem",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--surface)",
+                alignSelf: "flex-end",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                fontSize: "1rem",
+              }}
+            >
+              ✨
+            </button>
             <button
               type="button"
               disabled={isLoading || !input.trim()}
@@ -519,6 +600,50 @@ export function ChatPage() {
           )}
         </div>
       </div>
+
+      {promptModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPromptModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "var(--surface)",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              padding: "1rem",
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <PromptEngineerPanel
+              key={pePanelKey}
+              compact
+              initialText={input}
+              taskType="research"
+              onApply={(optimized) => {
+                setInput(optimized);
+                setPromptModalOpen(false);
+              }}
+              onCancel={() => setPromptModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

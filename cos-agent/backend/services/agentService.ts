@@ -1,5 +1,5 @@
 import { AggregatorAgent } from "../agents/aggregator.ts";
-import { CHAT_MODEL } from "../agents/constants.ts";
+import { estimateCost } from "../agents/modelSelector.ts";
 import { buildSystemPromptForUser } from "../agents/contextLoader.ts";
 import { OrchestratorAgent } from "../agents/orchestrator.ts";
 import { ValidatorAgent } from "../agents/validator.ts";
@@ -13,10 +13,6 @@ import type {
   LlmResponse,
 } from "./llm/llmTypes.ts";
 import type { ToolExecutor } from "./tools/toolExecutor.ts";
-
-/** Grobe Kostenannahme (USD) gemäß Sonnet — Feld für Logs/Analysen. */
-const USD_PER_INPUT_TOKEN = 0.000003;
-const USD_PER_OUTPUT_TOKEN = 0.000015;
 
 export type ChatResponse = {
   content: string;
@@ -37,7 +33,7 @@ export type AgentServiceOptions = {
 
 function wrapLlmWithCallLog(
   inner: LlmClient,
-  sink: Array<{ response: LlmResponse; latencyMs: number }>,
+  sink: Array<{ response: LlmResponse; latencyMs: number; model: string }>,
 ): LlmClient {
   return {
     async chat(req: LlmRequest): Promise<LlmResponse> {
@@ -46,6 +42,7 @@ function wrapLlmWithCallLog(
       sink.push({
         response,
         latencyMs: Math.round(performance.now() - t0),
+        model: req.model,
       });
       return response;
     },
@@ -85,7 +82,9 @@ export class AgentService {
     sessionId: string;
     message: string;
   }): Promise<ChatResponse> {
-    const llmCalls: Array<{ response: LlmResponse; latencyMs: number }> = [];
+    const llmCalls: Array<
+      { response: LlmResponse; latencyMs: number; model: string }
+    > = [];
     const trackedLlm = wrapLlmWithCallLog(this.llm, llmCalls);
 
     const validator = new ValidatorAgent(trackedLlm);
@@ -117,6 +116,7 @@ export class AgentService {
         params.sessionId,
         c.response,
         c.latencyMs,
+        c.model,
       );
     }
 
@@ -190,15 +190,18 @@ export class AgentService {
     sessionId: string,
     response: LlmResponse,
     latencyMs: number,
+    model: string,
   ): Promise<void> {
-    const costUsd =
-      response.input_tokens * USD_PER_INPUT_TOKEN +
-      response.output_tokens * USD_PER_OUTPUT_TOKEN;
+    const costUsd = estimateCost(
+      model,
+      response.input_tokens,
+      response.output_tokens,
+    );
 
     await this.db.insertLlmCall({
       userId,
       sessionId,
-      model: CHAT_MODEL,
+      model,
       inputTokens: response.input_tokens,
       outputTokens: response.output_tokens,
       costUsd,

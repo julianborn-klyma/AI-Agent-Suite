@@ -1,1 +1,33 @@
 .DS_Store
+
+# Secrets & lokale Env (nie committen)
+.env
+.env.*
+!.env.example
+!**/.env.example
+**/.env
+
+# Schlüssel / Zertifikate
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+*.key
+
+# Build & Test-Artefakte
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+.next/
+node_modules/
+
+# Editor / OS
+.cursor/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db

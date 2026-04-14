@@ -1,6 +1,11 @@
 import type { AppEnv } from "../../config/env.ts";
 import type { AppDependencies } from "../../app_deps.ts";
-import { getCosts } from "../../services/adminService.ts";
+import type {
+  CostBreakdownRow,
+  CostByModelRow,
+  CostTotals,
+} from "../../services/adminService.ts";
+import { getCosts, getTenantIdForUser } from "../../services/adminService.ts";
 import { jsonResponse } from "../json.ts";
 import { requireAdminContext } from "./guard.ts";
 
@@ -44,6 +49,18 @@ export async function handleAdminCostsGet(
     );
   }
 
-  const { by_user, totals } = await getCosts(deps.sql, fromP.date, toP.date);
-  return jsonResponse({ by_user, totals });
+  const tenantId = await getTenantIdForUser(deps.sql, gate.adminUserId);
+  const { by_user, by_model, totals } = tenantId
+    ? await getCosts(deps.sql, fromP.date, toP.date, { tenantId })
+    : {
+      by_user: [] as CostBreakdownRow[],
+      by_model: [] as CostByModelRow[],
+      totals: {
+        total_calls: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+      } satisfies CostTotals,
+    };
+  return jsonResponse({ by_user, by_model, totals });
 }

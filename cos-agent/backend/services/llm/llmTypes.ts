@@ -11,11 +11,14 @@ export type LlmMessage =
   }
   | { role: "tool"; content: string; tool_call_id: string };
 
+/** Anthropic Server-Tool `web_search` (wird im Client zu `web_search_20250305` gemappt). */
+export type LlmToolsInput = Array<LlmToolDefinition | "web_search">;
+
 export interface LlmRequest {
   model: string;
   system: string;
   messages: LlmMessage[];
-  tools?: LlmToolDefinition[];
+  tools?: LlmToolsInput;
   metadata: { user_id: string; source: string };
 }
 

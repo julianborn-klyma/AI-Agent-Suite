@@ -12,6 +12,11 @@ import type { LlmClient } from "./services/llm/llmTypes.ts";
 import { OAuthService } from "./services/oauthService.ts";
 import type { ToolExecutor } from "./services/tools/toolExecutor.ts";
 import { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
+import { BriefingDelivery } from "./services/briefingDelivery.ts";
+import { TaskQueueService } from "./services/taskQueueService.ts";
+import { PasswordService } from "./services/passwordService.ts";
+import { AuditService } from "./services/auditService.ts";
+import { TenantService } from "./services/tenantService.ts";
 import { resolveTestDatabaseUrl } from "./test_database_url.ts";
 
 const TEST_SERVICE_TOKEN = "test-service-token-32-chars-minimum!!";
@@ -123,6 +128,10 @@ export type TestServerInputDeps = AppCoreDependencies &
       | "emailCategorizationService"
       | "weeklyConsolidatorService"
       | "driveSyncService"
+      | "taskQueueService"
+      | "passwordService"
+      | "auditService"
+      | "tenantService"
     >
   >;
 
@@ -131,17 +140,56 @@ export async function startTestServer(
   deps?: TestServerInputDeps,
   options?: StartTestServerOptions,
 ): Promise<{ baseUrl: string; shutdown: () => void }> {
-  return await withTestEnv(vars, async () => {
+  /** Env muss bis zum Server-Stopp gelten (z. B. ENCRYPTION_KEY für Credential-Encrypt). */
+  resetEnvCacheForTests();
+  const previous = new Map<string, string | undefined>();
+  for (const key of Object.keys(vars)) {
+    previous.set(key, Deno.env.get(key));
+  }
+  for (const [k, v] of Object.entries(vars)) {
+    Deno.env.set(k, v);
+  }
+  let envRestored = false;
+  const restoreEnv = (): void => {
+    if (envRestored) return;
+    envRestored = true;
+    for (const [k, old] of previous) {
+      if (old === undefined) Deno.env.delete(k);
+      else Deno.env.set(k, old);
+    }
+    resetEnvCacheForTests();
+  };
+
+  try {
     const env = await loadEnv();
     let resolvedDeps: AppDependencies | undefined;
     if (deps) {
       const core = deps;
-      const oauthService = core.oauthService ?? new OAuthService(core.db, env);
-      const withOauth = { ...core, oauthService } as AppDependencies;
+      const auditService = core.auditService ?? new AuditService(core.db);
+      const tenantService = core.tenantService ??
+        new TenantService(core.db, auditService);
+      const oauthService = core.oauthService ??
+        new OAuthService(core.db, env, tenantService);
+      const withOauth = { ...core, oauthService, tenantService } as AppDependencies;
       const jobs = createJobServices(withOauth);
+      const learningForTasks = new LearningService(core.db, core.llm);
+      const taskQueueService =
+        core.taskQueueService ??
+        new TaskQueueService(
+          core.db,
+          core.llm,
+          core.toolExecutor,
+          core.documentService,
+          learningForTasks,
+          new BriefingDelivery(env),
+        );
+      const passwordService = core.passwordService ?? new PasswordService();
       resolvedDeps = {
         ...withOauth,
         ...jobs,
+        taskQueueService,
+        passwordService,
+        auditService,
         ...(core.emailCategorizationService
           ? { emailCategorizationService: core.emailCategorizationService }
           : {}),
@@ -166,13 +214,17 @@ export async function startTestServer(
       baseUrl,
       shutdown: () => {
         ac.abort();
+        restoreEnv();
         const hook = options?.onShutdown;
         if (hook) {
           void Promise.resolve(hook());
         }
       },
     };
-  });
+  } catch (e) {
+    restoreEnv();
+    throw e;
+  }
 }
 
 export { TEST_JWT_SECRET, TEST_SERVICE_TOKEN };

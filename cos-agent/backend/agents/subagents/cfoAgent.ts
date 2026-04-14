@@ -2,7 +2,7 @@ import type { DatabaseClient } from "../../db/databaseClient.ts";
 import type { LlmClient } from "../../services/llm/llmTypes.ts";
 import type { DocumentService } from "../../services/documentService.ts";
 import type { ToolExecutor } from "../../services/tools/toolExecutor.ts";
-import { CHAT_MODEL } from "../constants.ts";
+import { MODEL_IDS } from "../modelSelector.ts";
 import type { AgentContext, LearningCandidate, SubAgentResult } from "../types.ts";
 import { BaseSubAgent } from "./base.ts";
 
@@ -112,7 +112,7 @@ export class CfoAgent extends BaseSubAgent {
           : "");
 
       const text = await this.llm.chat({
-        model: CHAT_MODEL,
+        model: MODEL_IDS.opus,
         system: this.CFO_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userBlock }],
         metadata: { user_id: context.userId, source: "cos-cfo" },

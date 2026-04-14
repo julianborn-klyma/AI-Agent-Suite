@@ -1,5 +1,6 @@
 import type { AppEnv } from "../config/env.ts";
 import type { DatabaseClient } from "../db/databaseClient.ts";
+import type { TenantService } from "./tenantService.ts";
 import { encrypt } from "./tools/credentialHelper.ts";
 
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -11,6 +12,13 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+].join(" ");
+
+/** Nur Identität — getrennt vom Gmail-/Drive-Verbindungs-Flow. */
+const GOOGLE_LOGIN_SCOPES = [
+  "openid",
+  "email",
+  "profile",
 ].join(" ");
 
 const SLACK_AUTH = "https://slack.com/oauth/v2/authorize";
@@ -27,7 +35,58 @@ export class OAuthService {
   constructor(
     private readonly db: DatabaseClient,
     private readonly env: AppEnv,
+    private readonly tenantService: TenantService,
   ) {}
+
+  private devFallback(): boolean {
+    return (Deno.env.get("APP_ENV") ?? "development") === "development";
+  }
+
+  private async resolveGoogleOAuth(
+    tenantId: string,
+  ): Promise<{ clientId: string; clientSecret: string }> {
+    const creds = await this.tenantService.getOAuthCredentials(tenantId);
+    if (creds.google?.clientId && creds.google?.clientSecret) {
+      return {
+        clientId: creds.google.clientId,
+        clientSecret: creds.google.clientSecret,
+      };
+    }
+    if (
+      this.devFallback() &&
+      this.env.googleClientId.trim() &&
+      this.env.googleClientSecret.trim()
+    ) {
+      return {
+        clientId: this.env.googleClientId,
+        clientSecret: this.env.googleClientSecret,
+      };
+    }
+    throw new Error("Google nicht konfiguriert");
+  }
+
+  private async resolveSlackOAuth(
+    tenantId: string,
+  ): Promise<{ clientId: string; clientSecret: string }> {
+    const creds = await this.tenantService.getOAuthCredentials(tenantId);
+    if (creds.slack?.clientId && creds.slack?.clientSecret) {
+      return {
+        clientId: creds.slack.clientId,
+        clientSecret: creds.slack.clientSecret,
+      };
+    }
+    if (
+      this.devFallback() &&
+      this.env.slackClientId.trim() &&
+      this.env.slackClientSecret.trim()
+    ) {
+      return {
+        clientId: this.env.slackClientId,
+        clientSecret: this.env.slackClientSecret,
+      };
+    }
+    throw new Error("Slack nicht konfiguriert");
+  }
 
   async createState(userId: string, provider: string): Promise<string> {
     const state = crypto.randomUUID();
@@ -37,13 +96,14 @@ export class OAuthService {
 
   async consumeState(
     state: string,
-  ): Promise<{ userId: string; provider: string } | null> {
+  ): Promise<{ userId: string | null; provider: string } | null> {
     return await this.db.consumeOauthState(state);
   }
 
-  buildSlackAuthUrl(state: string): string {
+  async buildSlackAuthUrl(state: string, tenantId: string): Promise<string> {
+    const { clientId } = await this.resolveSlackOAuth(tenantId);
     const p = new URLSearchParams({
-      client_id: this.env.slackClientId,
+      client_id: clientId,
       user_scope: SLACK_USER_SCOPES,
       redirect_uri: this.env.slackRedirectUri,
       state,
@@ -51,10 +111,14 @@ export class OAuthService {
     return `${SLACK_AUTH}?${p.toString()}`;
   }
 
-  async exchangeSlackCode(code: string): Promise<{ userAccessToken: string }> {
+  async exchangeSlackCode(
+    code: string,
+    tenantId: string,
+  ): Promise<{ userAccessToken: string }> {
+    const { clientId, clientSecret } = await this.resolveSlackOAuth(tenantId);
     const body = new URLSearchParams({
-      client_id: this.env.slackClientId,
-      client_secret: this.env.slackClientSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       code,
       redirect_uri: this.env.slackRedirectUri,
     });
@@ -97,9 +161,10 @@ export class OAuthService {
     });
   }
 
-  buildGoogleAuthUrl(state: string): string {
+  async buildGoogleAuthUrl(state: string, tenantId: string): Promise<string> {
+    const { clientId } = await this.resolveGoogleOAuth(tenantId);
     const p = new URLSearchParams({
-      client_id: this.env.googleClientId,
+      client_id: clientId,
       redirect_uri: this.env.googleRedirectUri,
       response_type: "code",
       scope: GOOGLE_SCOPES,
@@ -110,7 +175,60 @@ export class OAuthService {
     return `${GOOGLE_AUTH}?${p.toString()}`;
   }
 
-  async exchangeGoogleCode(code: string): Promise<{
+  /** OAuth „Mit Google anmelden“ (keine Gmail-/Drive-Scopes). */
+  buildGoogleLoginAuthUrl(state: string): string {
+    const p = new URLSearchParams({
+      client_id: this.env.googleClientId,
+      redirect_uri: this.env.googleLoginRedirectUri,
+      response_type: "code",
+      scope: GOOGLE_LOGIN_SCOPES,
+      access_type: "online",
+      state,
+    });
+    return `${GOOGLE_AUTH}?${p.toString()}`;
+  }
+
+  /** Gmail-/Drive-Verbindung: Token mit Tenant- oder Dev-ENV-Credentials. */
+  async exchangeGoogleConnectionCode(
+    code: string,
+    tenantId: string,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date;
+  }> {
+    const { clientId, clientSecret } = await this.resolveGoogleOAuth(tenantId);
+    return await this.exchangeGoogleCodeWithCredentials(
+      code,
+      this.env.googleRedirectUri,
+      clientId,
+      clientSecret,
+    );
+  }
+
+  /** „Mit Google anmelden“: nutzt globale ENV-Client-Registrierung. */
+  async exchangeGoogleCode(
+    code: string,
+    redirectUri: string = this.env.googleRedirectUri,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date;
+  }> {
+    return await this.exchangeGoogleCodeWithCredentials(
+      code,
+      redirectUri,
+      this.env.googleClientId,
+      this.env.googleClientSecret,
+    );
+  }
+
+  private async exchangeGoogleCodeWithCredentials(
+    code: string,
+    redirectUri: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<{
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date;
@@ -118,9 +236,9 @@ export class OAuthService {
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      client_id: this.env.googleClientId,
-      client_secret: this.env.googleClientSecret,
-      redirect_uri: this.env.googleRedirectUri,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
     });
     const res = await fetch(GOOGLE_TOKEN, {
       method: "POST",
@@ -153,6 +271,34 @@ export class OAuthService {
       Date.now() + (Number.isFinite(expSec) ? expSec : 3600) * 1000,
     );
     return { accessToken, refreshToken, expiresAt };
+  }
+
+  async fetchGoogleUserProfile(accessToken: string): Promise<{
+    email: string;
+    emailVerified: boolean;
+  }> {
+    const res = await fetch(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    const text = await res.text();
+    let j: Record<string, unknown> = {};
+    try {
+      j = text ? JSON.parse(text) as Record<string, unknown> : {};
+    } catch {
+      throw new Error(`Google userinfo ungültig: ${text.slice(0, 120)}`);
+    }
+    if (!res.ok) {
+      throw new Error(`Google userinfo: HTTP ${res.status}`);
+    }
+    const email = typeof j.email === "string" ? j.email.trim() : "";
+    if (!email) {
+      throw new Error("Google userinfo ohne E-Mail.");
+    }
+    const emailVerified = j.verified_email === true;
+    return { email, emailVerified };
   }
 
   async saveGoogleTokens(

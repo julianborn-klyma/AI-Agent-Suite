@@ -63,14 +63,18 @@ export async function handleGoogleAuthStart(
   }
   const userId = await requireAuthAllowQueryToken(req, env);
   if (!userId) return unauthorized();
-  if (!env.googleClientId.trim()) {
+  const tenant = await deps.tenantService.requireTenantForUser(userId);
+  if (!deps.tenantService.googleConnectionAvailable(tenant)) {
     return jsonResponse(
-      { error: "Google OAuth nicht konfiguriert" },
+      {
+        error: "Google ist für euer Unternehmen nicht konfiguriert.",
+        hint: "Bitte wendet euch an euren Administrator.",
+      },
       { status: 503 },
     );
   }
   const state = await deps.oauthService.createState(userId, "google");
-  const url = deps.oauthService.buildGoogleAuthUrl(state);
+  const url = await deps.oauthService.buildGoogleAuthUrl(state, tenant.id);
   return redirect(url);
 }
 
@@ -97,13 +101,22 @@ export async function handleGoogleCallback(
   if (!consumed || consumed.provider !== "google") {
     return fail();
   }
+  if (!consumed.userId) {
+    return fail();
+  }
 
-  if (!env.googleClientId.trim() || !env.googleClientSecret.trim()) {
+  let tenant;
+  try {
+    tenant = await deps.tenantService.requireTenantForUser(consumed.userId);
+  } catch {
     return fail();
   }
 
   try {
-    const tokens = await deps.oauthService.exchangeGoogleCode(code);
+    const tokens = await deps.oauthService.exchangeGoogleConnectionCode(
+      code,
+      tenant.id,
+    );
     await deps.oauthService.saveGoogleTokens(consumed.userId, tokens);
   } catch {
     return fail();
@@ -172,14 +185,18 @@ export async function handleSlackAuthStart(
   }
   const userId = await requireAuthAllowQueryToken(req, env);
   if (!userId) return unauthorized();
-  if (!env.slackClientId.trim() || !env.slackClientSecret.trim()) {
+  const tenant = await deps.tenantService.requireTenantForUser(userId);
+  if (!deps.tenantService.slackConnectionAvailable(tenant)) {
     return jsonResponse(
-      { error: "Slack OAuth nicht konfiguriert" },
+      {
+        error: "Slack ist für euer Unternehmen nicht konfiguriert.",
+        hint: "Bitte wendet euch an euren Administrator.",
+      },
       { status: 503 },
     );
   }
   const state = await deps.oauthService.createState(userId, "slack");
-  const url = deps.oauthService.buildSlackAuthUrl(state);
+  const url = await deps.oauthService.buildSlackAuthUrl(state, tenant.id);
   return redirect(url);
 }
 
@@ -206,13 +223,22 @@ export async function handleSlackCallback(
   if (!consumed || consumed.provider !== "slack") {
     return fail();
   }
+  if (!consumed.userId) {
+    return fail();
+  }
 
-  if (!env.slackClientId.trim() || !env.slackClientSecret.trim()) {
+  let tenant;
+  try {
+    tenant = await deps.tenantService.requireTenantForUser(consumed.userId);
+  } catch {
     return fail();
   }
 
   try {
-    const { userAccessToken } = await deps.oauthService.exchangeSlackCode(code);
+    const { userAccessToken } = await deps.oauthService.exchangeSlackCode(
+      code,
+      tenant.id,
+    );
     await deps.oauthService.saveSlackUserToken(consumed.userId, userAccessToken);
   } catch {
     return fail();

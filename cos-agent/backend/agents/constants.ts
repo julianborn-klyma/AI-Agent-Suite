@@ -1,2 +1,4 @@
-/** Modell für Orchestrator, Sub-Agents und Chat-Logging. */
-export const CHAT_MODEL = "claude-sonnet-4-20250514";
+import { MODEL_IDS } from "./modelSelector.ts";
+
+/** Standard-Chat-/Orchestrierungsmodell (Sonnet). */
+export const CHAT_MODEL = MODEL_IDS.sonnet;

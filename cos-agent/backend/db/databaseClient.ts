@@ -89,6 +89,60 @@ export type Schedule = {
   created_at: Date;
 };
 
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  slack_client_id: string | null;
+  slack_client_secret_enc: string | null;
+  google_client_id: string | null;
+  google_client_secret_enc: string | null;
+  notion_client_id: string | null;
+  notion_client_secret_enc: string | null;
+  plan: string;
+  is_active: boolean;
+  admin_email: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TenantListEntry = Tenant & {
+  user_count: number;
+  credentials_configured: {
+    slack: boolean;
+    google: boolean;
+    notion: boolean;
+  };
+};
+
+export class SlugTakenError extends Error {
+  readonly code = "SLUG_TAKEN" as const;
+  constructor() {
+    super("SLUG_TAKEN");
+    this.name = "SlugTakenError";
+  }
+}
+
+/** Zeile `cos_task_queue` (async Agent-Tasks). */
+export type TaskQueueRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  document_ids: string[] | null;
+  context: string | null;
+  result: string | null;
+  result_notion_page_id: string | null;
+  result_draft_id: string | null;
+  error_message: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
 export type GetLearningsOptions = {
   categories?: string[];
   minConfidence?: number;
@@ -148,6 +202,81 @@ export interface DatabaseClient {
       email: string;
       role: string;
       is_active: boolean;
+      password_hash: string | null;
+      failed_login_attempts: number;
+      locked_until: Date | null;
+      last_login_at: Date | null;
+      last_login_ip: string | null;
+    }
+    | null
+  >;
+
+  countLoginAttemptsByIpSince(
+    ip: string,
+    sinceMinutes: number,
+  ): Promise<number>;
+
+  insertLoginAttempt(params: {
+    email: string;
+    ipAddress: string;
+    success: boolean;
+    userAgent: string | null;
+  }): Promise<void>;
+
+  incrementFailedLogin(userId: string): Promise<{
+    attempts: number;
+    locked_until: Date | null;
+  }>;
+
+  recordSuccessfulLogin(userId: string, ip: string): Promise<void>;
+
+  updateUserPasswordHash(userId: string, passwordHash: string): Promise<void>;
+
+  insertAuditLog(params: {
+    action: string;
+    userId?: string | null;
+    tenantId?: string | null;
+    resourceType?: string | null;
+    resourceId?: string | null;
+    metadata?: Record<string, unknown> | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    success?: boolean;
+  }): Promise<void>;
+
+  listAuditLog(params: {
+    tenantId?: string;
+    userId?: string;
+    action?: string;
+    from?: Date;
+    to?: Date;
+    limit?: number;
+  }): Promise<
+    {
+      id: string;
+      action: string;
+      user_id: string | null;
+      tenant_id: string | null;
+      resource_type: string | null;
+      resource_id: string | null;
+      metadata: unknown;
+      ip_address: string | null;
+      user_agent: string | null;
+      success: boolean;
+      created_at: Date;
+    }[]
+  >;
+
+  findUserWithPasswordById(
+    userId: string,
+  ): Promise<
+    | {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      is_active: boolean;
+      password_hash: string | null;
     }
     | null
   >;
@@ -157,6 +286,17 @@ export interface DatabaseClient {
   ): Promise<
     { id: string; name: string; email: string; role: string } | null
   >;
+
+  setOnboardingCompleted(userId: string): Promise<void>;
+
+  getUserOnboardingSnapshot(userId: string): Promise<{
+    onboarding_completed: boolean;
+    created_at: Date;
+    name: string;
+    tenant_id: string | null;
+    task_count: number;
+    conversation_count: number;
+  } | null>;
 
   /** `user_id` der chronologisch ersten Zeile der Session, sonst `null`. */
   getSessionOwnerUserId(sessionId: string): Promise<string | null>;
@@ -176,13 +316,14 @@ export interface DatabaseClient {
 
   insertOauthState(params: {
     state: string;
-    userId: string;
+    /** null z. B. für Google-Login ohne bestehende Session */
+    userId: string | null;
     provider: string;
   }): Promise<void>;
 
   consumeOauthState(
     state: string,
-  ): Promise<{ userId: string; provider: string } | null>;
+  ): Promise<{ userId: string | null; provider: string } | null>;
 
   deleteUserContextsByKeys(userId: string, keys: string[]): Promise<void>;
 
@@ -307,6 +448,82 @@ export interface DatabaseClient {
     jobType: string,
     status: "success" | "error",
   ): Promise<void>;
+
+  insertTask(
+    userId: string,
+    params: {
+      title: string;
+      description: string;
+      priority?: string;
+      document_ids?: string[];
+      context?: string;
+    },
+  ): Promise<TaskQueueRow>;
+
+  getTasks(
+    userId: string,
+    options?: { status?: string; limit?: number },
+  ): Promise<TaskQueueRow[]>;
+
+  getTask(id: string, userId: string): Promise<TaskQueueRow | null>;
+
+  /** Transaktion: nächsten `pending`-Task sperren und auf `running` setzen. */
+  getNextPendingTask(): Promise<TaskQueueRow | null>;
+
+  updateTaskStatus(
+    id: string,
+    status: string,
+    params?: {
+      started_at?: Date;
+      completed_at?: Date;
+      result?: string;
+      result_notion_page_id?: string;
+      result_draft_id?: string;
+      error_message?: string;
+    },
+  ): Promise<void>;
+
+  cancelTask(
+    id: string,
+    userId: string,
+  ): Promise<{ ok: true } | { ok: false; reason: "not_found" | "not_pending" }>;
+
+  getTenant(id: string): Promise<Tenant | null>;
+
+  getTenantBySlug(slug: string): Promise<Tenant | null>;
+
+  listTenants(): Promise<TenantListEntry[]>;
+
+  insertTenant(params: {
+    name: string;
+    slug: string;
+    plan?: string;
+    admin_email?: string;
+  }): Promise<Tenant>;
+
+  updateTenant(
+    id: string,
+    params: {
+      name?: string;
+      plan?: string;
+      is_active?: boolean;
+      admin_email?: string | null;
+    },
+  ): Promise<Tenant>;
+
+  updateTenantCredentials(
+    id: string,
+    credentials: {
+      slack_client_id?: string | null;
+      slack_client_secret_enc?: string | null;
+      google_client_id?: string | null;
+      google_client_secret_enc?: string | null;
+      notion_client_id?: string | null;
+      notion_client_secret_enc?: string | null;
+    },
+  ): Promise<void>;
+
+  getTenantForUser(userId: string): Promise<Tenant | null>;
 }
 
 type PgSql = ReturnType<typeof postgres>;
@@ -540,6 +757,91 @@ async function postgresUpsertLearning(
   return mapLearningRow(inserted[0]!);
 }
 
+type TaskQueueSqlRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  document_ids: string[] | null;
+  context: string | null;
+  result: string | null;
+  result_notion_page_id: string | null;
+  result_draft_id: string | null;
+  error_message: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function mapTaskQueueRow(r: TaskQueueSqlRow): TaskQueueRow {
+  return {
+    id: r.id,
+    user_id: r.user_id,
+    title: r.title,
+    description: r.description,
+    priority: r.priority,
+    status: r.status,
+    document_ids: r.document_ids,
+    context: r.context,
+    result: r.result,
+    result_notion_page_id: r.result_notion_page_id,
+    result_draft_id: r.result_draft_id,
+    error_message: r.error_message,
+    started_at: r.started_at,
+    completed_at: r.completed_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+type TenantSqlRow = {
+  id: string;
+  name: string;
+  slug: string;
+  slack_client_id: string | null;
+  slack_client_secret_enc: string | null;
+  google_client_id: string | null;
+  google_client_secret_enc: string | null;
+  notion_client_id: string | null;
+  notion_client_secret_enc: string | null;
+  plan: string;
+  is_active: boolean;
+  admin_email: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function mapTenantRow(r: TenantSqlRow): Tenant {
+  return {
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    slack_client_id: r.slack_client_id,
+    slack_client_secret_enc: r.slack_client_secret_enc,
+    google_client_id: r.google_client_id,
+    google_client_secret_enc: r.google_client_secret_enc,
+    notion_client_id: r.notion_client_id,
+    notion_client_secret_enc: r.notion_client_secret_enc,
+    plan: r.plan,
+    is_active: r.is_active,
+    admin_email: r.admin_email,
+    created_at: r.created_at instanceof Date
+      ? r.created_at.toISOString()
+      : String(r.created_at),
+    updated_at: r.updated_at instanceof Date
+      ? r.updated_at.toISOString()
+      : String(r.updated_at),
+  };
+}
+
+function isPgUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && "code" in e &&
+    (e as { code: string }).code === "23505";
+}
+
 export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
   return {
     async findAgentConfigForUser(userId: string): Promise<AgentConfigRow | null> {
@@ -679,11 +981,26 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
         email: string;
         role: string;
         is_active: boolean;
+        password_hash: string | null;
+        failed_login_attempts: number;
+        locked_until: Date | null;
+        last_login_at: Date | null;
+        last_login_ip: string | null;
       }
       | null
     > {
       const rows = await sql`
-        SELECT id::text, name, email, role, is_active
+        SELECT
+          id::text,
+          name,
+          email,
+          role,
+          is_active,
+          password_hash,
+          COALESCE(failed_login_attempts, 0)::int AS failed_login_attempts,
+          locked_until,
+          last_login_at,
+          last_login_ip
         FROM cos_users
         WHERE LOWER(TRIM(email)) = LOWER(TRIM(${email}))
         LIMIT 1
@@ -693,6 +1010,220 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
         email: string;
         role: string;
         is_active: boolean;
+        password_hash: string | null;
+        failed_login_attempts: number;
+        locked_until: Date | null;
+        last_login_at: Date | null;
+        last_login_ip: string | null;
+      }[];
+      return rows[0] ?? null;
+    },
+
+    async countLoginAttemptsByIpSince(
+      ip: string,
+      sinceMinutes: number,
+    ): Promise<number> {
+      const since = new Date(Date.now() - sinceMinutes * 60_000);
+      const rows = await sql`
+        SELECT COUNT(*)::int AS c
+        FROM cos_login_attempts
+        WHERE ip_address = ${ip}
+          AND created_at > ${since}
+      ` as { c: number }[];
+      return rows[0]?.c ?? 0;
+    },
+
+    async insertLoginAttempt(params: {
+      email: string;
+      ipAddress: string;
+      success: boolean;
+      userAgent: string | null;
+    }): Promise<void> {
+      await sql`
+        INSERT INTO cos_login_attempts (email, ip_address, success, user_agent)
+        VALUES (
+          ${params.email.trim()},
+          ${params.ipAddress},
+          ${params.success},
+          ${params.userAgent}
+        )
+      `;
+    },
+
+    async incrementFailedLogin(userId: string): Promise<{
+      attempts: number;
+      locked_until: Date | null;
+    }> {
+      const rows = await sql`
+        UPDATE cos_users SET
+          failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
+          locked_until = CASE
+            WHEN COALESCE(failed_login_attempts, 0) + 1 >= 5
+            THEN NOW() + interval '30 minutes'
+            ELSE locked_until
+          END
+        WHERE id = ${userId}::uuid
+        RETURNING failed_login_attempts::int AS failed_login_attempts, locked_until
+      ` as { failed_login_attempts: number; locked_until: Date | null }[];
+      const r = rows[0]!;
+      return {
+        attempts: r.failed_login_attempts,
+        locked_until: r.locked_until,
+      };
+    },
+
+    async recordSuccessfulLogin(userId: string, ip: string): Promise<void> {
+      await sql`
+        UPDATE cos_users SET
+          failed_login_attempts = 0,
+          locked_until = NULL,
+          last_login_at = NOW(),
+          last_login_ip = ${ip}
+        WHERE id = ${userId}::uuid
+      `;
+    },
+
+    async updateUserPasswordHash(
+      userId: string,
+      passwordHash: string,
+    ): Promise<void> {
+      await sql`
+        UPDATE cos_users SET
+          password_hash = ${passwordHash},
+          password_changed_at = NOW(),
+          failed_login_attempts = 0,
+          locked_until = NULL
+        WHERE id = ${userId}::uuid
+      `;
+    },
+
+    async insertAuditLog(params: {
+      action: string;
+      userId?: string | null;
+      tenantId?: string | null;
+      resourceType?: string | null;
+      resourceId?: string | null;
+      metadata?: Record<string, unknown> | null;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+      success?: boolean;
+    }): Promise<void> {
+      const metaJson = JSON.stringify(params.metadata ?? {});
+      await sql`
+        INSERT INTO cos_audit_log (
+          tenant_id,
+          user_id,
+          action,
+          resource_type,
+          resource_id,
+          metadata,
+          ip_address,
+          user_agent,
+          success
+        )
+        VALUES (
+          ${params.tenantId ?? null}::uuid,
+          ${params.userId ?? null}::uuid,
+          ${params.action},
+          ${params.resourceType ?? null},
+          ${params.resourceId ?? null},
+          ${metaJson}::jsonb,
+          ${params.ipAddress ?? null},
+          ${params.userAgent ?? null},
+          ${params.success !== false}
+        )
+      `;
+    },
+
+    async listAuditLog(params: {
+      tenantId?: string;
+      userId?: string;
+      action?: string;
+      from?: Date;
+      to?: Date;
+      limit?: number;
+    }): Promise<
+      {
+        id: string;
+        action: string;
+        user_id: string | null;
+        tenant_id: string | null;
+        resource_type: string | null;
+        resource_id: string | null;
+        metadata: unknown;
+        ip_address: string | null;
+        user_agent: string | null;
+        success: boolean;
+        created_at: Date;
+      }[]
+    > {
+      const lim = Math.min(Math.max(params.limit ?? 100, 1), 500);
+      const from = params.from ?? new Date(0);
+      const to = params.to ?? new Date("2099-01-01");
+      const rows = await sql`
+        SELECT
+          id::text,
+          action,
+          user_id::text AS user_id,
+          tenant_id::text AS tenant_id,
+          resource_type,
+          resource_id,
+          metadata,
+          ip_address,
+          user_agent,
+          success,
+          created_at
+        FROM cos_audit_log
+        WHERE created_at >= ${from}
+          AND created_at <= ${to}
+        ORDER BY created_at DESC
+        LIMIT ${lim}
+      ` as {
+        id: string;
+        action: string;
+        user_id: string | null;
+        tenant_id: string | null;
+        resource_type: string | null;
+        resource_id: string | null;
+        metadata: unknown;
+        ip_address: string | null;
+        user_agent: string | null;
+        success: boolean;
+        created_at: Date;
+      }[];
+      return rows.filter((r) => {
+        if (params.tenantId && r.tenant_id !== params.tenantId) return false;
+        if (params.userId && r.user_id !== params.userId) return false;
+        if (params.action && r.action !== params.action) return false;
+        return true;
+      });
+    },
+
+    async findUserWithPasswordById(
+      userId: string,
+    ): Promise<
+      | {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        is_active: boolean;
+        password_hash: string | null;
+      }
+      | null
+    > {
+      const rows = await sql`
+        SELECT id::text, name, email, role, is_active, password_hash
+        FROM cos_users
+        WHERE id = ${userId}::uuid
+        LIMIT 1
+      ` as {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        is_active: boolean;
+        password_hash: string | null;
       }[];
       return rows[0] ?? null;
     },
@@ -712,6 +1243,55 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
         name: string;
         email: string;
         role: string;
+      }[];
+      return rows[0] ?? null;
+    },
+
+    async setOnboardingCompleted(userId: string): Promise<void> {
+      await sql`
+        UPDATE cos_users
+        SET
+          onboarding_completed = true,
+          onboarding_completed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${userId}::uuid
+      `;
+    },
+
+    async getUserOnboardingSnapshot(userId: string): Promise<{
+      onboarding_completed: boolean;
+      created_at: Date;
+      name: string;
+      tenant_id: string | null;
+      task_count: number;
+      conversation_count: number;
+    } | null> {
+      const rows = await sql`
+        SELECT
+          COALESCE(u.onboarding_completed, false) AS onboarding_completed,
+          u.created_at,
+          u.name,
+          u.tenant_id::text AS tenant_id,
+          (
+            SELECT COUNT(*)::int
+            FROM cos_task_queue t
+            WHERE t.user_id = u.id
+          ) AS task_count,
+          (
+            SELECT COUNT(*)::int
+            FROM cos_conversations c
+            WHERE c.user_id = u.id
+          ) AS conversation_count
+        FROM cos_users u
+        WHERE u.id = ${userId}::uuid AND u.is_active = true
+        LIMIT 1
+      ` as {
+        onboarding_completed: boolean;
+        created_at: Date;
+        name: string;
+        tenant_id: string | null;
+        task_count: number;
+        conversation_count: number;
       }[];
       return rows[0] ?? null;
     },
@@ -796,23 +1376,30 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
 
     async insertOauthState(params: {
       state: string;
-      userId: string;
+      userId: string | null;
       provider: string;
     }): Promise<void> {
-      await sql`
-        INSERT INTO cos_oauth_states (state, user_id, provider)
-        VALUES (${params.state}, ${params.userId}::uuid, ${params.provider})
-      `;
+      if (params.userId === null) {
+        await sql`
+          INSERT INTO cos_oauth_states (state, user_id, provider)
+          VALUES (${params.state}, NULL, ${params.provider})
+        `;
+      } else {
+        await sql`
+          INSERT INTO cos_oauth_states (state, user_id, provider)
+          VALUES (${params.state}, ${params.userId}::uuid, ${params.provider})
+        `;
+      }
     },
 
     async consumeOauthState(
       state: string,
-    ): Promise<{ userId: string; provider: string } | null> {
+    ): Promise<{ userId: string | null; provider: string } | null> {
       const rows = await sql`
         DELETE FROM cos_oauth_states
         WHERE state = ${state} AND expires_at > NOW()
         RETURNING user_id::text AS user_id, provider
-      ` as { user_id: string; provider: string }[];
+      ` as { user_id: string | null; provider: string }[];
       const r = rows[0];
       if (!r) return null;
       return { userId: r.user_id, provider: r.provider };
@@ -1454,6 +2041,610 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
         SET last_run = NOW(), last_run_status = ${status}
         WHERE user_id = ${userId}::uuid AND job_type = ${jobType}
       `;
+    },
+
+    async insertTask(
+      userId: string,
+      params: {
+        title: string;
+        description: string;
+        priority?: string;
+        document_ids?: string[];
+        context?: string;
+      },
+    ): Promise<TaskQueueRow> {
+      const priority = params.priority ?? "medium";
+      const docIds = (params.document_ids ?? []).filter(Boolean);
+      const rows = docIds.length === 0
+        ? await sql`
+        INSERT INTO cos_task_queue (
+          user_id,
+          title,
+          description,
+          priority,
+          document_ids,
+          context
+        )
+        VALUES (
+          ${userId}::uuid,
+          ${params.title},
+          ${params.description},
+          ${priority},
+          NULL,
+          ${params.context ?? null}
+        )
+        RETURNING
+          id::text,
+          user_id::text,
+          title,
+          description,
+          priority,
+          status,
+          document_ids,
+          context,
+          result,
+          result_notion_page_id,
+          result_draft_id,
+          error_message,
+          started_at,
+          completed_at,
+          created_at,
+          updated_at
+      ` as TaskQueueSqlRow[]
+        : await sql`
+        INSERT INTO cos_task_queue (
+          user_id,
+          title,
+          description,
+          priority,
+          document_ids,
+          context
+        )
+        VALUES (
+          ${userId}::uuid,
+          ${params.title},
+          ${params.description},
+          ${priority},
+          ${sql.array(docIds)}::uuid[],
+          ${params.context ?? null}
+        )
+        RETURNING
+          id::text,
+          user_id::text,
+          title,
+          description,
+          priority,
+          status,
+          document_ids,
+          context,
+          result,
+          result_notion_page_id,
+          result_draft_id,
+          error_message,
+          started_at,
+          completed_at,
+          created_at,
+          updated_at
+      ` as TaskQueueSqlRow[];
+      return mapTaskQueueRow(rows[0]!);
+    },
+
+    async getTasks(
+      userId: string,
+      options?: { status?: string; limit?: number },
+    ): Promise<TaskQueueRow[]> {
+      const lim = Math.min(Math.max(options?.limit ?? 20, 1), 100);
+      const st = options?.status?.trim();
+      const rows = st
+        ? await sql`
+          SELECT
+            id::text,
+            user_id::text,
+            title,
+            description,
+            priority,
+            status,
+            document_ids,
+            context,
+            result,
+            result_notion_page_id,
+            result_draft_id,
+            error_message,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+          FROM cos_task_queue
+          WHERE user_id = ${userId}::uuid AND status = ${st}
+          ORDER BY
+            CASE priority
+              WHEN 'urgent' THEN 1
+              WHEN 'high' THEN 2
+              WHEN 'medium' THEN 3
+              WHEN 'low' THEN 4
+              ELSE 5
+            END ASC,
+            created_at DESC
+          LIMIT ${lim}
+        ` as TaskQueueSqlRow[]
+        : await sql`
+          SELECT
+            id::text,
+            user_id::text,
+            title,
+            description,
+            priority,
+            status,
+            document_ids,
+            context,
+            result,
+            result_notion_page_id,
+            result_draft_id,
+            error_message,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+          FROM cos_task_queue
+          WHERE user_id = ${userId}::uuid
+          ORDER BY
+            CASE status
+              WHEN 'pending' THEN 1
+              WHEN 'running' THEN 2
+              WHEN 'failed' THEN 3
+              WHEN 'completed' THEN 4
+              WHEN 'cancelled' THEN 5
+              ELSE 6
+            END ASC,
+            CASE priority
+              WHEN 'urgent' THEN 1
+              WHEN 'high' THEN 2
+              WHEN 'medium' THEN 3
+              WHEN 'low' THEN 4
+              ELSE 5
+            END ASC,
+            created_at DESC
+          LIMIT ${lim}
+        ` as TaskQueueSqlRow[];
+      return rows.map(mapTaskQueueRow);
+    },
+
+    async getTask(id: string, userId: string): Promise<TaskQueueRow | null> {
+      const rows = await sql`
+        SELECT
+          id::text,
+          user_id::text,
+          title,
+          description,
+          priority,
+          status,
+          document_ids,
+          context,
+          result,
+          result_notion_page_id,
+          result_draft_id,
+          error_message,
+          started_at,
+          completed_at,
+          created_at,
+          updated_at
+        FROM cos_task_queue
+        WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
+        LIMIT 1
+      ` as TaskQueueSqlRow[];
+      return rows[0] ? mapTaskQueueRow(rows[0]) : null;
+    },
+
+    async getNextPendingTask(): Promise<TaskQueueRow | null> {
+      return await sql.begin(async (tx) => {
+        const picked = await tx`
+          SELECT id
+          FROM cos_task_queue
+          WHERE status = 'pending'
+          ORDER BY
+            CASE priority
+              WHEN 'urgent' THEN 1
+              WHEN 'high' THEN 2
+              WHEN 'medium' THEN 3
+              WHEN 'low' THEN 4
+              ELSE 5
+            END ASC,
+            created_at ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        ` as { id: string }[];
+        if (!picked[0]) return null;
+        const tid = picked[0].id;
+        const updated = await tx`
+          UPDATE cos_task_queue
+          SET
+            status = 'running',
+            started_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${tid}::uuid
+          RETURNING
+            id::text,
+            user_id::text,
+            title,
+            description,
+            priority,
+            status,
+            document_ids,
+            context,
+            result,
+            result_notion_page_id,
+            result_draft_id,
+            error_message,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+        ` as TaskQueueSqlRow[];
+        return updated[0] ? mapTaskQueueRow(updated[0]) : null;
+      });
+    },
+
+    async updateTaskStatus(
+      id: string,
+      status: string,
+      params?: {
+        started_at?: Date;
+        completed_at?: Date;
+        result?: string;
+        result_notion_page_id?: string;
+        result_draft_id?: string;
+        error_message?: string;
+      },
+    ): Promise<void> {
+      const cur = await sql`
+        SELECT
+          started_at,
+          completed_at,
+          result,
+          result_notion_page_id,
+          result_draft_id,
+          error_message
+        FROM cos_task_queue
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      ` as {
+        started_at: Date | null;
+        completed_at: Date | null;
+        result: string | null;
+        result_notion_page_id: string | null;
+        result_draft_id: string | null;
+        error_message: string | null;
+      }[];
+      if (!cur[0]) return;
+      const c = cur[0];
+      const p = params ?? {};
+      const started_at = "started_at" in p ? p.started_at ?? null : c.started_at;
+      const completed_at = "completed_at" in p
+        ? p.completed_at ?? null
+        : c.completed_at;
+      const result = "result" in p ? p.result ?? null : c.result;
+      const result_notion_page_id = "result_notion_page_id" in p
+        ? p.result_notion_page_id ?? null
+        : c.result_notion_page_id;
+      const result_draft_id = "result_draft_id" in p
+        ? p.result_draft_id ?? null
+        : c.result_draft_id;
+      const error_message = "error_message" in p
+        ? p.error_message ?? null
+        : c.error_message;
+      await sql`
+        UPDATE cos_task_queue
+        SET
+          status = ${status},
+          started_at = ${started_at},
+          completed_at = ${completed_at},
+          result = ${result},
+          result_notion_page_id = ${result_notion_page_id},
+          result_draft_id = ${result_draft_id},
+          error_message = ${error_message},
+          updated_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
+    },
+
+    async cancelTask(
+      id: string,
+      userId: string,
+    ): Promise<{ ok: true } | { ok: false; reason: "not_found" | "not_pending" }> {
+      const updated = await sql`
+        UPDATE cos_task_queue
+        SET
+          status = 'cancelled',
+          updated_at = NOW()
+        WHERE
+          id = ${id}::uuid
+          AND user_id = ${userId}::uuid
+          AND status = 'pending'
+        RETURNING id
+      ` as { id: string }[];
+      if (updated.length > 0) return { ok: true };
+      const ex = await sql`
+        SELECT status
+        FROM cos_task_queue
+        WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
+        LIMIT 1
+      ` as { status: string }[];
+      if (ex.length === 0) return { ok: false, reason: "not_found" };
+      return { ok: false, reason: "not_pending" };
+    },
+
+    async getTenant(id: string): Promise<Tenant | null> {
+      const rows = await sql`
+        SELECT
+          id::text,
+          name,
+          slug,
+          slack_client_id,
+          slack_client_secret_enc,
+          google_client_id,
+          google_client_secret_enc,
+          notion_client_id,
+          notion_client_secret_enc,
+          plan,
+          is_active,
+          admin_email,
+          created_at,
+          updated_at
+        FROM cos_tenants
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      ` as TenantSqlRow[];
+      return rows[0] ? mapTenantRow(rows[0]) : null;
+    },
+
+    async getTenantBySlug(slug: string): Promise<Tenant | null> {
+      const s = slug.trim();
+      const rows = await sql`
+        SELECT
+          id::text,
+          name,
+          slug,
+          slack_client_id,
+          slack_client_secret_enc,
+          google_client_id,
+          google_client_secret_enc,
+          notion_client_id,
+          notion_client_secret_enc,
+          plan,
+          is_active,
+          admin_email,
+          created_at,
+          updated_at
+        FROM cos_tenants
+        WHERE slug = ${s}
+        LIMIT 1
+      ` as TenantSqlRow[];
+      return rows[0] ? mapTenantRow(rows[0]) : null;
+    },
+
+    async listTenants(): Promise<TenantListEntry[]> {
+      const rows = await sql`
+        SELECT
+          t.id::text,
+          t.name,
+          t.slug,
+          t.slack_client_id,
+          t.slack_client_secret_enc,
+          t.google_client_id,
+          t.google_client_secret_enc,
+          t.notion_client_id,
+          t.notion_client_secret_enc,
+          t.plan,
+          t.is_active,
+          t.admin_email,
+          t.created_at,
+          t.updated_at,
+          (SELECT COUNT(*)::int FROM cos_users u WHERE u.tenant_id = t.id) AS user_count
+        FROM cos_tenants t
+        ORDER BY t.slug ASC
+      ` as (TenantSqlRow & { user_count: number })[];
+      return rows.map((r) => {
+        const t = mapTenantRow(r);
+        return {
+          ...t,
+          user_count: r.user_count,
+          credentials_configured: {
+            slack: Boolean(r.slack_client_id?.trim()),
+            google: Boolean(r.google_client_id?.trim()),
+            notion: Boolean(r.notion_client_id?.trim()),
+          },
+        };
+      });
+    },
+
+    async insertTenant(params: {
+      name: string;
+      slug: string;
+      plan?: string;
+      admin_email?: string;
+    }): Promise<Tenant> {
+      const plan = params.plan?.trim() || "starter";
+      const slug = params.slug.trim();
+      const name = params.name.trim();
+      try {
+        const rows = await sql`
+          INSERT INTO cos_tenants (name, slug, plan, admin_email)
+          VALUES (${name}, ${slug}, ${plan}, ${params.admin_email?.trim() ?? null})
+          RETURNING
+            id::text,
+            name,
+            slug,
+            slack_client_id,
+            slack_client_secret_enc,
+            google_client_id,
+            google_client_secret_enc,
+            notion_client_id,
+            notion_client_secret_enc,
+            plan,
+            is_active,
+            admin_email,
+            created_at,
+            updated_at
+        ` as TenantSqlRow[];
+        return mapTenantRow(rows[0]!);
+      } catch (e) {
+        if (isPgUniqueViolation(e)) throw new SlugTakenError();
+        throw e;
+      }
+    },
+
+    async updateTenant(
+      id: string,
+      params: {
+        name?: string;
+        plan?: string;
+        is_active?: boolean;
+        admin_email?: string | null;
+      },
+    ): Promise<Tenant> {
+      const cur = await sql`
+        SELECT
+          id::text,
+          name,
+          slug,
+          slack_client_id,
+          slack_client_secret_enc,
+          google_client_id,
+          google_client_secret_enc,
+          notion_client_id,
+          notion_client_secret_enc,
+          plan,
+          is_active,
+          admin_email,
+          created_at,
+          updated_at
+        FROM cos_tenants
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      ` as TenantSqlRow[];
+      if (!cur[0]) throw new Error("Tenant nicht gefunden.");
+      const c = cur[0];
+      const name = params.name !== undefined ? params.name.trim() : c.name;
+      const plan = params.plan !== undefined ? params.plan.trim() : c.plan;
+      const is_active = params.is_active !== undefined ? params.is_active : c.is_active;
+      const admin_email = params.admin_email !== undefined
+        ? (params.admin_email?.trim() || null)
+        : c.admin_email;
+      const rows = await sql`
+        UPDATE cos_tenants
+        SET
+          name = ${name},
+          plan = ${plan},
+          is_active = ${is_active},
+          admin_email = ${admin_email},
+          updated_at = NOW()
+        WHERE id = ${id}::uuid
+        RETURNING
+          id::text,
+          name,
+          slug,
+          slack_client_id,
+          slack_client_secret_enc,
+          google_client_id,
+          google_client_secret_enc,
+          notion_client_id,
+          notion_client_secret_enc,
+          plan,
+          is_active,
+          admin_email,
+          created_at,
+          updated_at
+      ` as TenantSqlRow[];
+      return mapTenantRow(rows[0]!);
+    },
+
+    async updateTenantCredentials(
+      id: string,
+      credentials: {
+        slack_client_id?: string | null;
+        slack_client_secret_enc?: string | null;
+        google_client_id?: string | null;
+        google_client_secret_enc?: string | null;
+        notion_client_id?: string | null;
+        notion_client_secret_enc?: string | null;
+      },
+    ): Promise<void> {
+      const cur = await sql`
+        SELECT
+          slack_client_id,
+          slack_client_secret_enc,
+          google_client_id,
+          google_client_secret_enc,
+          notion_client_id,
+          notion_client_secret_enc
+        FROM cos_tenants
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      ` as {
+        slack_client_id: string | null;
+        slack_client_secret_enc: string | null;
+        google_client_id: string | null;
+        google_client_secret_enc: string | null;
+        notion_client_id: string | null;
+        notion_client_secret_enc: string | null;
+      }[];
+      if (!cur[0]) throw new Error("Tenant nicht gefunden.");
+      const c = cur[0];
+      const slack_client_id = "slack_client_id" in credentials
+        ? credentials.slack_client_id ?? null
+        : c.slack_client_id;
+      const slack_client_secret_enc = "slack_client_secret_enc" in credentials
+        ? credentials.slack_client_secret_enc ?? null
+        : c.slack_client_secret_enc;
+      const google_client_id = "google_client_id" in credentials
+        ? credentials.google_client_id ?? null
+        : c.google_client_id;
+      const google_client_secret_enc = "google_client_secret_enc" in credentials
+        ? credentials.google_client_secret_enc ?? null
+        : c.google_client_secret_enc;
+      const notion_client_id = "notion_client_id" in credentials
+        ? credentials.notion_client_id ?? null
+        : c.notion_client_id;
+      const notion_client_secret_enc = "notion_client_secret_enc" in credentials
+        ? credentials.notion_client_secret_enc ?? null
+        : c.notion_client_secret_enc;
+      await sql`
+        UPDATE cos_tenants
+        SET
+          slack_client_id = ${slack_client_id},
+          slack_client_secret_enc = ${slack_client_secret_enc},
+          google_client_id = ${google_client_id},
+          google_client_secret_enc = ${google_client_secret_enc},
+          notion_client_id = ${notion_client_id},
+          notion_client_secret_enc = ${notion_client_secret_enc},
+          updated_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
+    },
+
+    async getTenantForUser(userId: string): Promise<Tenant | null> {
+      const rows = await sql`
+        SELECT
+          t.id::text,
+          t.name,
+          t.slug,
+          t.slack_client_id,
+          t.slack_client_secret_enc,
+          t.google_client_id,
+          t.google_client_secret_enc,
+          t.notion_client_id,
+          t.notion_client_secret_enc,
+          t.plan,
+          t.is_active,
+          t.admin_email,
+          t.created_at,
+          t.updated_at
+        FROM cos_tenants t
+        INNER JOIN cos_users u ON u.tenant_id = t.id
+        WHERE u.id = ${userId}::uuid
+        LIMIT 1
+      ` as TenantSqlRow[];
+      return rows[0] ? mapTenantRow(rows[0]) : null;
     },
   };
 }

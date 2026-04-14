@@ -5,6 +5,7 @@ import type {
   LlmRequest,
   LlmResponse,
   LlmToolCall,
+  LlmToolsInput,
 } from "./llmTypes.ts";
 import { LlmClientError } from "./llmTypes.ts";
 
@@ -67,14 +68,27 @@ function normalizeToolInput(input: unknown): Record<string, unknown> {
   return {};
 }
 
-function toAnthropicTools(
-  tools: LlmToolDefinition[],
-): Record<string, unknown>[] {
-  return tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.input_schema,
-  }));
+function toAnthropicToolsPayload(
+  tools: LlmToolsInput | undefined,
+): Record<string, unknown>[] | undefined {
+  if (!tools?.length) return undefined;
+  const out: Record<string, unknown>[] = [];
+  for (const t of tools) {
+    if (t === "web_search") {
+      out.push({ type: "web_search_20250305", name: "web_search" });
+    } else {
+      out.push({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema,
+      });
+    }
+  }
+  return out;
+}
+
+function requestUsesWebSearch(req: LlmRequest): boolean {
+  return Boolean(req.tools?.some((t) => t === "web_search"));
 }
 
 /**
@@ -164,7 +178,7 @@ function toAnthropicMessages(
   return out;
 }
 
-function parseAnthropicResponse(json: unknown): LlmResponse {
+export function parseAnthropicResponse(json: unknown): LlmResponse {
   if (json === null || typeof json !== "object") {
     throw new LlmClientError(0, "Anthropic-Antwort: kein JSON-Objekt");
   }
@@ -187,6 +201,12 @@ function parseAnthropicResponse(json: unknown): LlmResponse {
   for (const block of rawContent) {
     if (block === null || typeof block !== "object") continue;
     const b = block as Record<string, unknown>;
+    if (
+      b.type === "server_tool_use" ||
+      b.type === "web_search_tool_result"
+    ) {
+      continue;
+    }
     if (b.type === "text" && typeof b.text === "string") {
       textParts.push(b.text);
     } else if (b.type === "tool_use") {
@@ -222,8 +242,9 @@ export class AnthropicClient implements LlmClient {
       messages: toAnthropicMessages(req.messages),
     };
 
-    if (req.tools?.length) {
-      body.tools = toAnthropicTools(req.tools);
+    const toolsPayload = toAnthropicToolsPayload(req.tools);
+    if (toolsPayload?.length) {
+      body.tools = toolsPayload;
       body.tool_choice = { type: "auto" };
     }
 
@@ -231,13 +252,17 @@ export class AnthropicClient implements LlmClient {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
+        const headers: Record<string, string> = {
+          "x-api-key": this.apiKey,
+          "anthropic-version": ANTHROPIC_VERSION,
+          "content-type": "application/json",
+        };
+        if (requestUsesWebSearch(req)) {
+          headers["anthropic-beta"] = "web-search-2025-03-05";
+        }
         return await fetch(ANTHROPIC_URL, {
           method: "POST",
-          headers: {
-            "x-api-key": this.apiKey,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-          },
+          headers,
           body: JSON.stringify(body),
           signal: controller.signal,
         });

@@ -14,6 +14,13 @@
 - CORS: explizite Allowlist aus ENV, kein Wildcard.
 - User-ID **immer** aus JWT, nie aus Request-Body.
 
+## Git: vor jedem `git push`
+
+- **`.gitignore` checken und bei Bedarf updaten** (Workspace-Root und bei Bedarf `cos-agent/.gitignore`), damit sicherheitsrelevante Dateien nicht ins Repo gelangen (`.env*`, Keys, Zertifikate, lokale Overrides, Artefakte mit eingebetteten Secrets).
+- Kurz verifizieren: nichts Sensibles im Index — z. B. `git status -u`, bei Zweifel `git check-ignore -v <pfad>`.
+- Wenn eine sensible Datei schon getrackt war: `git rm --cached <datei>` (Datei lokal behalten), dann `.gitignore` und Commit.
+- Kein Push vorschlagen oder begleiten, solange offensichtliche Lücken in der Ignore-Liste oder getrackte Geheimnisse bestehen.
+
 ## Testing
 
 - Jeder neue Endpoint bekommt einen **E2E-Test** (Black-Box über HTTP).

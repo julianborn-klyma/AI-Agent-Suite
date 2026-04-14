@@ -1,11 +1,21 @@
 import { assertEquals } from "@std/assert";
 import type { LlmClient, LlmRequest, LlmResponse } from "../services/llm/llmTypes.ts";
+import { MODEL_IDS } from "./modelSelector.ts";
 import { ValidatorAgent } from "./validator.ts";
 import type { AgentContext, SubAgentResult } from "./types.ts";
 
 class FakeLlmClient implements LlmClient {
   constructor(private readonly response: LlmResponse) {}
   async chat(_req: LlmRequest): Promise<LlmResponse> {
+    return this.response;
+  }
+}
+
+class CaptureModelLlm implements LlmClient {
+  models: string[] = [];
+  constructor(private readonly response: LlmResponse) {}
+  async chat(req: LlmRequest): Promise<LlmResponse> {
+    this.models.push(req.model);
     return this.response;
   }
 }
@@ -104,6 +114,37 @@ Deno.test("Validator — irrelevante Antwort → needsRetry true", async () => {
     context: baseContext(),
   });
   assertEquals(r.needsRetry, true);
+});
+
+Deno.test("Validator — isRetry false → Haiku, isRetry true → Opus", async () => {
+  const body: LlmResponse = {
+    content: JSON.stringify({
+      approved: true,
+      issues: [],
+      needsRetry: false,
+    }),
+    input_tokens: 1,
+    output_tokens: 1,
+    stop_reason: "end_turn",
+  };
+  const cap = new CaptureModelLlm(body);
+  const v = new ValidatorAgent(cap);
+  await v.validate({
+    originalMessage: "a",
+    proposedResponse: "b",
+    results: [],
+    context: baseContext(),
+    isRetry: false,
+  });
+  await v.validate({
+    originalMessage: "a",
+    proposedResponse: "b",
+    results: [],
+    context: baseContext(),
+    isRetry: true,
+  });
+  assertEquals(cap.models[0], MODEL_IDS.haiku);
+  assertEquals(cap.models[1], MODEL_IDS.opus);
 });
 
 Deno.test("Validator — falscher Ton → issue wrong_tone", async () => {

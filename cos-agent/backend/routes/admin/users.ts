@@ -10,6 +10,8 @@ import {
   updateUser,
   upsertUserContext,
 } from "../../services/adminService.ts";
+import { AUDIT_ACTIONS } from "../../services/auditService.ts";
+import { mintPasswordSetupJwt } from "../authJwt.ts";
 import { jsonResponse } from "../json.ts";
 import { requireAdminContext } from "./guard.ts";
 
@@ -75,15 +77,38 @@ export async function handleAdminUsersCreate(
     role = o.role;
   }
 
+  const temp = deps.passwordService.generateTemporaryPassword();
+  const passwordHash = await deps.passwordService.hashPassword(temp);
   const created = await createUser(deps.sql, {
     email: email.trim(),
     name: name.trim(),
     role,
+    password_hash: passwordHash,
   });
   if (created === "duplicate_email") {
     return jsonResponse({ error: "Email bereits vergeben" }, { status: 409 });
   }
-  return jsonResponse(created, { status: 201 });
+  const password_setup_token = await mintPasswordSetupJwt(env, {
+    userId: created.id,
+    email: created.email,
+  });
+  await deps.auditService.log({
+    action: AUDIT_ACTIONS.USER_CREATED,
+    userId: created.id,
+    resourceType: "user",
+    resourceId: created.id,
+    metadata: { email: created.email },
+    success: true,
+    req,
+  });
+  return jsonResponse(
+    {
+      user: created,
+      temporary_password: temp,
+      password_setup_token,
+    },
+    { status: 201 },
+  );
 }
 
 export async function handleAdminUserPatch(

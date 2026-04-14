@@ -7,6 +7,8 @@
  */
 import { load } from "@std/dotenv";
 import postgres from "postgres";
+import { runMigrations } from "../db/migrate.ts";
+import { PasswordService } from "../services/passwordService.ts";
 
 await load({ export: true });
 
@@ -17,8 +19,14 @@ if (!url) {
   Deno.exit(1);
 }
 
+await runMigrations(url);
+
 const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL")?.trim() ?? "e2e-admin@test.local";
+const SUPERADMIN_EMAIL =
+  Deno.env.get("E2E_SUPERADMIN_EMAIL")?.trim() ?? "e2e-superadmin@test.local";
 const USER_EMAIL = Deno.env.get("E2E_USER_EMAIL")?.trim() ?? "e2e-user@test.local";
+const E2E_PASSWORD = Deno.env.get("E2E_USER_PASSWORD")?.trim() ??
+  "Playwright-E2E-2026!";
 
 const sql = postgres(url, { max: 1 });
 try {
@@ -32,13 +40,29 @@ try {
   `;
   await sql`
     INSERT INTO cos_users (id, email, name, role, is_active)
+    VALUES (gen_random_uuid(), ${SUPERADMIN_EMAIL}, 'Playwright SuperAdmin', 'superadmin', true)
+    ON CONFLICT (email) DO UPDATE SET
+      name = EXCLUDED.name,
+      role = EXCLUDED.role,
+      is_active = EXCLUDED.is_active
+  `;
+  await sql`
+    INSERT INTO cos_users (id, email, name, role, is_active)
     VALUES (gen_random_uuid(), ${USER_EMAIL}, 'Playwright User', 'member', true)
     ON CONFLICT (email) DO UPDATE SET
       name = EXCLUDED.name,
       role = EXCLUDED.role,
       is_active = EXCLUDED.is_active
   `;
-  console.log(`playwright_seed: OK — ${ADMIN_EMAIL}, ${USER_EMAIL}`);
+  const hash = await new PasswordService().hashPassword(E2E_PASSWORD);
+  await sql`
+    UPDATE cos_users
+    SET password_hash = ${hash}
+    WHERE email IN (${ADMIN_EMAIL}, ${USER_EMAIL}, ${SUPERADMIN_EMAIL})
+  `;
+  console.log(
+    `playwright_seed: OK — ${ADMIN_EMAIL}, ${SUPERADMIN_EMAIL}, ${USER_EMAIL} (Passwort für E2E gesetzt)`,
+  );
 } finally {
   await sql.end({ timeout: 5 });
 }

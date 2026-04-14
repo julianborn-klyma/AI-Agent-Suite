@@ -2,7 +2,7 @@ import type { DatabaseClient } from "../db/databaseClient.ts";
 import type { DocumentService } from "../services/documentService.ts";
 import type { LlmClient, LlmMessage } from "../services/llm/llmTypes.ts";
 import type { ToolExecutor } from "../services/tools/toolExecutor.ts";
-import { CHAT_MODEL } from "./constants.ts";
+import { MODEL_IDS } from "./modelSelector.ts";
 import { loadAgentContext } from "./contextLoader.ts";
 import { parseJsonObject } from "./jsonUtils.ts";
 import type {
@@ -22,7 +22,9 @@ import { SlackAgent } from "./subagents/slackAgent.ts";
 import type { AggregatorAgent } from "./aggregator.ts";
 import type { LearningService } from "../services/learningService.ts";
 import { LearningAgent } from "./subagents/learningAgent.ts";
+import { WebSearchAgent } from "./subagents/webSearchAgent.ts";
 import type { ValidatorAgent } from "./validator.ts";
+import { PromptEngineerService } from "../services/promptEngineerService.ts";
 
 function contextValue(
   rows: { key: string; value: string }[],
@@ -33,6 +35,9 @@ function contextValue(
 
 const CFO_KEYWORD_RE =
   /cashflow|finanzierung|businessplan|bba|budget|kosten|umsatz|investition|runway|bankability|liquidität|bilanz|gewinn|verlust|forecast/i;
+
+const WEB_KEYWORD_RE =
+  /recherchiere|suche|aktuelle|news|heute|markt|wettbewerb|preis|förderung|gesetz|entwicklung|trend|studie|bericht/i;
 
 function cfoKeywordPlan(message: string, context: AgentContext): AgentPlan | null {
   if (!context.connectedTools.includes("cfo")) return null;
@@ -48,6 +53,7 @@ function cfoKeywordPlan(message: string, context: AgentContext): AgentPlan | nul
 export class OrchestratorAgent {
   protected agents: Map<string, BaseSubAgent>;
   private readonly learningAgent: LearningAgent;
+  private readonly promptEngineer: PromptEngineerService;
 
   constructor(
     private llm: LlmClient,
@@ -60,6 +66,7 @@ export class OrchestratorAgent {
     learningLlm: LlmClient,
     private readonly documentService: DocumentService,
   ) {
+    this.promptEngineer = new PromptEngineerService(llm);
     this.agents = new Map<string, BaseSubAgent>([
       ["gmail", new GmailAgent(llm, db, toolExecutor)],
       ["notion", new NotionAgent(llm, db, toolExecutor)],
@@ -67,6 +74,7 @@ export class OrchestratorAgent {
       ["drive", new DriveAgent(llm, db, toolExecutor)],
       ["calendar", new CalendarAgent(llm, db, toolExecutor)],
       ["cfo", new CfoAgent(llm, db, toolExecutor, documentService)],
+      ["web_search", new WebSearchAgent(llm, db, toolExecutor)],
     ]);
     this.learningAgent = new LearningAgent(
       learningLlm,
@@ -161,6 +169,7 @@ export class OrchestratorAgent {
         proposedResponse: aggregated,
         results,
         context,
+        isRetry: retryCount > 0,
       });
 
       if (validation.needsRetry && retryCount < 2) {
@@ -254,6 +263,24 @@ export class OrchestratorAgent {
     if (cfoQuick && cfoQuick.steps.every((s) => available.includes(s.agent))) {
       return cfoQuick;
     }
+
+    const complexity = this.promptEngineer.classifyComplexity(message);
+    const webHit = WEB_KEYWORD_RE.test(message);
+    let researchBlock = "";
+    if (complexity === "high" || webHit) {
+      try {
+        const opt = await this.promptEngineer.optimizeResearchPrompt({
+          rawRequest: message,
+          userContext: context,
+          taskType: "research",
+        });
+        researchBlock =
+          `\n\nResearch-Vorbereitung (System):\n${opt.system_prompt}\n\nResearch-Vorbereitung (User):\n${opt.user_prompt}`;
+      } catch {
+        /* Prompt-Engineer optional */
+      }
+    }
+
     const learningHint = context.learnings.length
       ? `\nAktive Learnings:\n${
         context.learnings.map((l) =>
@@ -267,13 +294,15 @@ export class OrchestratorAgent {
       (retryFeedback
         ? `\nKorrektur vom Validator (Retry):\n${retryFeedback}\n`
         : "") +
+      `\nKomplexität (Heuristik): ${complexity}.` +
+      researchBlock +
       `\nVerfügbare Agents (nur diese verwenden): ${available.join(", ")}.` +
       learningHint +
       "\n\nAntworte NUR mit JSON im Format " +
-      '{"steps":[{"agent":"notion"|"gmail"|"slack"|"drive"|"calendar"|"cfo","task":{...},"rationale":"optional"}],"reasoning":"optional"}';
+      '{"steps":[{"agent":"notion"|"gmail"|"slack"|"drive"|"calendar"|"cfo"|"web_search","task":{...},"rationale":"optional"}],"reasoning":"optional"}';
 
     const res = await this.llm.chat({
-      model: CHAT_MODEL,
+      model: MODEL_IDS.haiku,
       system:
         "Du bist ein Intent-Analyzer. Antworte NUR mit JSON. Nutze ausschließlich die genannten Agents.",
       messages: [{ role: "user", content: userBlock }],
@@ -300,6 +329,22 @@ export class OrchestratorAgent {
     if (steps.length === 0) return this.fallbackPlan(context);
     const filtered = steps.filter((s) => available.includes(s.agent));
     if (filtered.length === 0) return this.fallbackPlan(context);
+
+    const shouldInjectWeb =
+      (complexity === "high" || webHit) &&
+      available.includes("web_search") &&
+      !filtered.some((s) => s.agent === "web_search");
+    if (shouldInjectWeb) {
+      filtered.unshift({
+        agent: "web_search",
+        task: {
+          type: "research",
+          query: message,
+          depth: complexity === "high" ? "deep" : "quick",
+        },
+      });
+    }
+
     return {
       steps: filtered,
       reasoning: typeof (parsed as { reasoning?: unknown }).reasoning ===

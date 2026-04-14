@@ -12,6 +12,11 @@ import { AnthropicClient } from "./services/llm/anthropicClient.ts";
 import { OAuthService } from "./services/oauthService.ts";
 import { ToolExecutor } from "./services/tools/toolExecutor.ts";
 import { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
+import { BriefingDelivery } from "./services/briefingDelivery.ts";
+import { TaskQueueService } from "./services/taskQueueService.ts";
+import { PasswordService } from "./services/passwordService.ts";
+import { AuditService } from "./services/auditService.ts";
+import { TenantService } from "./services/tenantService.ts";
 import postgres from "postgres";
 
 const env = await loadEnv();
@@ -25,7 +30,9 @@ const documentService = new DocumentService(db, llm);
 const agentService = new AgentService(db, llm, toolExecutor, {
   documentService,
 });
-const oauthService = new OAuthService(db, env);
+const auditService = new AuditService(db);
+const tenantService = new TenantService(db, auditService);
+const oauthService = new OAuthService(db, env, tenantService);
 const learningService = new LearningService(db, llm);
 const emailStyleService = new EmailStyleService(db, llm, toolExecutor);
 const emailCategorizationService = new EmailCategorizationService(
@@ -46,6 +53,18 @@ const driveSyncService = new DriveSyncService(
   toolExecutor,
 );
 
+const briefingDelivery = new BriefingDelivery(env);
+const taskQueueService = new TaskQueueService(
+  db,
+  llm,
+  toolExecutor,
+  documentService,
+  learningService,
+  briefingDelivery,
+);
+
+const passwordService = new PasswordService();
+
 const deps = {
   db,
   agentService,
@@ -53,11 +72,15 @@ const deps = {
   sql,
   llm,
   toolExecutor,
+  tenantService,
   oauthService,
   emailStyleService,
   emailCategorizationService,
   weeklyConsolidatorService,
   driveSyncService,
+  taskQueueService,
+  passwordService,
+  auditService,
 };
 
 console.log(`cos-agent backend listening on :${env.port}`);

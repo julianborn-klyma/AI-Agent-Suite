@@ -68,12 +68,41 @@ export type CostTotals = {
   cost_usd: number;
 };
 
+export type CostByModelRow = {
+  model: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+};
+
+export type SuperAdminTenantCostRow = {
+  tenant_id: string;
+  tenant_name: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+};
+
 export async function isAdminUser(sql: Sql, userId: string): Promise<boolean> {
   const rows = await sql`
     SELECT 1 AS ok
     FROM cos_users
     WHERE id = ${userId}::uuid
       AND role = 'admin'
+      AND is_active = true
+    LIMIT 1
+  ` as { ok: number }[];
+  return rows.length > 0;
+}
+
+export async function isSuperAdminUser(sql: Sql, userId: string): Promise<boolean> {
+  const rows = await sql`
+    SELECT 1 AS ok
+    FROM cos_users
+    WHERE id = ${userId}::uuid
+      AND role = 'superadmin'
       AND is_active = true
     LIMIT 1
   ` as { ok: number }[];
@@ -114,12 +143,78 @@ export async function listUsers(sql: Sql): Promise<AdminUser[]> {
   return rows.map(mapUser);
 }
 
+export async function listUsersByTenant(
+  sql: Sql,
+  tenantId: string,
+): Promise<AdminUser[]> {
+  const rows = await sql`
+    SELECT id::text, email, name, role, is_active, created_at
+    FROM cos_users
+    WHERE tenant_id = ${tenantId}::uuid
+    ORDER BY created_at DESC
+  ` as {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    is_active: boolean;
+    created_at: Date;
+  }[];
+  return rows.map(mapUser);
+}
+
 export async function createUser(
   sql: Sql,
-  params: { email: string; name: string; role: string },
+  params: {
+    email: string;
+    name: string;
+    role: string;
+    password_hash?: string;
+    tenant_id?: string | null;
+  },
 ): Promise<AdminUser | "duplicate_email"> {
   try {
-    const rows = await sql`
+    const tid = params.tenant_id?.trim() ?? null;
+    const rows = params.password_hash
+      ? tid
+      ? await sql`
+      INSERT INTO cos_users (email, name, role, password_hash, tenant_id)
+      VALUES (${params.email.trim()}, ${params.name.trim()}, ${params.role}, ${params.password_hash}, ${tid}::uuid)
+      RETURNING id::text, email, name, role, is_active, created_at
+    ` as {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      is_active: boolean;
+      created_at: Date;
+    }[]
+      : await sql`
+      INSERT INTO cos_users (email, name, role, password_hash)
+      VALUES (${params.email.trim()}, ${params.name.trim()}, ${params.role}, ${params.password_hash})
+      RETURNING id::text, email, name, role, is_active, created_at
+    ` as {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      is_active: boolean;
+      created_at: Date;
+    }[]
+      : tid
+      ? await sql`
+      INSERT INTO cos_users (email, name, role, tenant_id)
+      VALUES (${params.email.trim()}, ${params.name.trim()}, ${params.role}, ${tid}::uuid)
+      RETURNING id::text, email, name, role, is_active, created_at
+    ` as {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      is_active: boolean;
+      created_at: Date;
+    }[]
+      : await sql`
       INSERT INTO cos_users (email, name, role)
       VALUES (${params.email.trim()}, ${params.name.trim()}, ${params.role})
       RETURNING id::text, email, name, role, is_active, created_at
@@ -822,11 +917,38 @@ function num(v: unknown): number {
   return Number(v);
 }
 
+export async function getTenantIdForUser(
+  sql: Sql,
+  userId: string,
+): Promise<string | null> {
+  const rows = await sql`
+    SELECT tenant_id::text AS tid
+    FROM cos_users
+    WHERE id = ${userId}::uuid
+    LIMIT 1
+  ` as { tid: string | null }[];
+  return rows[0]?.tid ?? null;
+}
+
+/** LLM-Kosten im Zeitraum; mit `tenantId` nur Aufrufe von Usern dieses Mandanten. */
 export async function getCosts(
   sql: Sql,
   from: Date,
   to: Date,
-): Promise<{ by_user: CostBreakdownRow[]; totals: CostTotals }> {
+  options?: { tenantId?: string },
+): Promise<{
+  by_user: CostBreakdownRow[];
+  by_model: CostByModelRow[];
+  totals: CostTotals;
+}> {
+  const tid = options?.tenantId;
+  const userJoin = tid
+    ? sql`INNER JOIN cos_users u ON u.id = c.user_id AND u.tenant_id = ${tid}::uuid`
+    : sql`LEFT JOIN cos_users u ON u.id = c.user_id`;
+  const modelJoin = tid
+    ? sql`INNER JOIN cos_users u ON u.id = c.user_id AND u.tenant_id = ${tid}::uuid`
+    : sql``;
+
   const rows = await sql`
     SELECT
       c.user_id::text AS user_id,
@@ -837,7 +959,7 @@ export async function getCosts(
       COALESCE(SUM(c.output_tokens), 0)::bigint AS output_tokens,
       COALESCE(SUM(c.cost_usd), 0) AS cost_usd
     FROM cos_llm_calls c
-    LEFT JOIN cos_users u ON u.id = c.user_id
+    ${userJoin}
     WHERE c.created_at >= ${from} AND c.created_at <= ${to}
     GROUP BY c.user_id, u.name, u.email
     ORDER BY user_id
@@ -850,6 +972,45 @@ export async function getCosts(
     output_tokens: bigint;
     cost_usd: string;
   }[];
+
+  const modelRows = tid
+    ? await sql`
+    SELECT
+      c.model AS model,
+      COUNT(*)::int AS calls,
+      COALESCE(SUM(c.input_tokens), 0)::bigint AS input_tokens,
+      COALESCE(SUM(c.output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(c.cost_usd), 0) AS cost_usd
+    FROM cos_llm_calls c
+    ${modelJoin}
+    WHERE c.created_at >= ${from} AND c.created_at <= ${to}
+    GROUP BY c.model
+    ORDER BY COALESCE(SUM(c.cost_usd), 0) DESC
+  ` as {
+      model: string;
+      calls: number;
+      input_tokens: bigint;
+      output_tokens: bigint;
+      cost_usd: string;
+    }[]
+    : await sql`
+    SELECT
+      c.model AS model,
+      COUNT(*)::int AS calls,
+      COALESCE(SUM(c.input_tokens), 0)::bigint AS input_tokens,
+      COALESCE(SUM(c.output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(c.cost_usd), 0) AS cost_usd
+    FROM cos_llm_calls c
+    WHERE c.created_at >= ${from} AND c.created_at <= ${to}
+    GROUP BY c.model
+    ORDER BY COALESCE(SUM(c.cost_usd), 0) DESC
+  ` as {
+      model: string;
+      calls: number;
+      input_tokens: bigint;
+      output_tokens: bigint;
+      cost_usd: string;
+    }[];
 
   const by_user: CostBreakdownRow[] = rows.map((r) => ({
     user_id: r.user_id,
@@ -876,5 +1037,98 @@ export async function getCosts(
     },
   );
 
-  return { by_user, totals };
+  const by_model: CostByModelRow[] = modelRows.map((r) => ({
+    model: r.model,
+    calls: r.calls,
+    input_tokens: Number(r.input_tokens),
+    output_tokens: Number(r.output_tokens),
+    cost_usd: num(r.cost_usd),
+  }));
+
+  return { by_user, by_model, totals };
+}
+
+/** Superadmin: Kosten pro Mandant + globale Modell-Summen. */
+export async function getSuperAdminCosts(
+  sql: Sql,
+  from: Date,
+  to: Date,
+): Promise<{
+  by_tenant: SuperAdminTenantCostRow[];
+  by_model: CostByModelRow[];
+  totals: { calls: number; cost_usd: number };
+}> {
+  const tenantRows = await sql`
+    SELECT
+      t.id::text AS tenant_id,
+      t.name AS tenant_name,
+      COUNT(c.id)::int AS calls,
+      COALESCE(SUM(c.input_tokens), 0)::bigint AS input_tokens,
+      COALESCE(SUM(c.output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(c.cost_usd), 0) AS cost_usd
+    FROM cos_tenants t
+    INNER JOIN cos_users u ON u.tenant_id = t.id
+    INNER JOIN cos_llm_calls c ON c.user_id = u.id
+      AND c.created_at >= ${from}
+      AND c.created_at <= ${to}
+    GROUP BY t.id, t.name
+    ORDER BY COALESCE(SUM(c.cost_usd), 0) DESC
+  ` as {
+    tenant_id: string;
+    tenant_name: string;
+    calls: number;
+    input_tokens: bigint;
+    output_tokens: bigint;
+    cost_usd: string;
+  }[];
+
+  const { by_model, totals } = await getCosts(sql, from, to);
+
+  return {
+    by_tenant: tenantRows.map((r) => ({
+      tenant_id: r.tenant_id,
+      tenant_name: r.tenant_name,
+      calls: r.calls,
+      input_tokens: Number(r.input_tokens),
+      output_tokens: Number(r.output_tokens),
+      cost_usd: num(r.cost_usd),
+    })),
+    by_model,
+    totals: {
+      calls: totals.total_calls,
+      cost_usd: totals.cost_usd,
+    },
+  };
+}
+
+export async function getSuperAdminDashboard(sql: Sql): Promise<{
+  total_tenants: number;
+  active_tenants: number;
+  total_users: number;
+  llm_costs_30d: {
+    total_usd: number;
+    by_model: CostByModelRow[];
+  };
+}> {
+  const to = new Date();
+  const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const { by_model, totals } = await getCosts(sql, from, to);
+  const tc = await sql`
+    SELECT COUNT(*)::int AS c FROM cos_tenants
+  ` as { c: number }[];
+  const tac = await sql`
+    SELECT COUNT(*)::int AS c FROM cos_tenants WHERE is_active = true
+  ` as { c: number }[];
+  const uc = await sql`
+    SELECT COUNT(*)::int AS c FROM cos_users
+  ` as { c: number }[];
+  return {
+    total_tenants: tc[0]?.c ?? 0,
+    active_tenants: tac[0]?.c ?? 0,
+    total_users: uc[0]?.c ?? 0,
+    llm_costs_30d: {
+      total_usd: totals.cost_usd,
+      by_model,
+    },
+  };
 }

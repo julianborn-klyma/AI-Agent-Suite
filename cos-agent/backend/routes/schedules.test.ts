@@ -35,6 +35,24 @@ async function mintJwt(sub: string): Promise<string> {
     .sign(secret);
 }
 
+/** cos_llm_calls referenziert cos_users ohne CASCADE — vor User-Löschen aufräumen. */
+async function deleteTestUser(sql: postgres.Sql, userId: string) {
+  await sql`DELETE FROM cos_llm_calls WHERE user_id = ${userId}::uuid`;
+  await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+}
+
+/** run-now queued den Job per queueMicrotask — ohne Warten wäre Cleanup vor insertLlmCall. */
+async function waitForUserLlmCalls(sql: postgres.Sql, userId: string, maxMs = 4000) {
+  const step = 40;
+  for (let waited = 0; waited < maxMs; waited += step) {
+    const hit = await sql`
+      SELECT 1 FROM cos_llm_calls WHERE user_id = ${userId}::uuid LIMIT 1
+    `;
+    if (hit.length > 0) return;
+    await new Promise((r) => setTimeout(r, step));
+  }
+}
+
 Deno.test({
   name: "E2E GET /api/schedules — initDefaultSchedules, 5 Job-Typen",
   sanitizeOps: false,
@@ -77,7 +95,7 @@ Deno.test({
         shutdown();
       }
     } finally {
-      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await deleteTestUser(sql, userId);
       await sql.end({ timeout: 5 });
     }
   },
@@ -169,7 +187,7 @@ Deno.test({
         shutdown();
       }
     } finally {
-      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await deleteTestUser(sql, userId);
       await sql.end({ timeout: 5 });
     }
   },
@@ -219,7 +237,7 @@ Deno.test({
         shutdown();
       }
     } finally {
-      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await deleteTestUser(sql, userId);
       await sql.end({ timeout: 5 });
     }
   },
@@ -235,9 +253,10 @@ Deno.test({
     const sql = postgres(url, { max: 2 });
     const userId = crypto.randomUUID();
     try {
+      const email = `sched-run-${userId.slice(0, 8)}@test.local`;
       await sql`
         INSERT INTO cos_users (id, email, name, role, is_active)
-        VALUES (${userId}::uuid, 'sched-run@test.local', 'S', 'member', true)
+        VALUES (${userId}::uuid, ${email}, 'S', 'member', true)
       `;
       const db = createPostgresDatabaseClient(sql);
       const llm = new FakeLlm();
@@ -271,7 +290,8 @@ Deno.test({
         shutdown();
       }
     } finally {
-      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await waitForUserLlmCalls(sql, userId);
+      await deleteTestUser(sql, userId);
       await sql.end({ timeout: 5 });
     }
   },
@@ -320,7 +340,7 @@ Deno.test({
         shutdown();
       }
     } finally {
-      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await deleteTestUser(sql, userId);
       await sql.end({ timeout: 5 });
     }
   },

@@ -16,10 +16,10 @@ export function isLoggedIn(): boolean {
   return Boolean(getToken());
 }
 
-export async function login(email: string, _password?: string): Promise<void> {
+export async function login(email: string, password: string): Promise<void> {
   const res = await api.post<{ token: string }>("/api/auth/login", {
     email,
-    password: _password ?? "",
+    password,
   });
   setToken(res.token);
 }

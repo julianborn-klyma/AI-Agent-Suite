@@ -35,6 +35,18 @@ export async function requireAdmin(
   return { ok: true, userId };
 }
 
+/** JWT + Rolle `superadmin` (aktiver User). */
+export async function requireSuperAdmin(
+  req: Request,
+  env: AppEnv,
+  isSuperAdmin: (userId: string) => Promise<boolean>,
+): Promise<AdminAuthResult> {
+  const userId = await requireAuth(req, env);
+  if (!userId) return { ok: false, kind: "unauthorized" };
+  if (!(await isSuperAdmin(userId))) return { ok: false, kind: "forbidden" };
+  return { ok: true, userId };
+}
+
 export async function requireJwtUserId(
   req: Request,
   env: AppEnv,

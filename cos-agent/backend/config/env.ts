@@ -16,6 +16,8 @@ export type AppEnv = {
   googleClientId: string;
   googleClientSecret: string;
   googleRedirectUri: string;
+  /** Separater Redirect für „Mit Google anmelden“ (OpenID); in Google Cloud als URI eintragen. */
+  googleLoginRedirectUri: string;
   /** Basis-URL des Frontends (OAuth-Redirect zurück). */
   frontendUrl: string;
   /** Optional: E-Mail-Versand für Daily Briefing (`/api/send`). */
@@ -102,6 +104,12 @@ export async function loadEnv(): Promise<AppEnv> {
   const googleRedirectUri =
     Deno.env.get("GOOGLE_REDIRECT_URI")?.trim() ??
     "http://localhost:8090/api/auth/google/callback";
+  const googleLoginRedirectUri =
+    Deno.env.get("GOOGLE_LOGIN_REDIRECT_URI")?.trim() ??
+    googleRedirectUri.replace(
+      "/api/auth/google/callback",
+      "/api/auth/google/login/callback",
+    );
   const frontendUrl =
     Deno.env.get("FRONTEND_URL")?.trim() ?? "http://localhost:5174";
 
@@ -133,6 +141,7 @@ export async function loadEnv(): Promise<AppEnv> {
     googleClientId,
     googleClientSecret,
     googleRedirectUri,
+    googleLoginRedirectUri,
     frontendUrl,
     emailServiceUrl,
     emailServiceToken: emailServiceTokenRaw,

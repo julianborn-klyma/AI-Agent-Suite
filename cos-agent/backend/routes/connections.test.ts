@@ -1,17 +1,21 @@
 import { assert, assertEquals } from "@std/assert";
 import * as jose from "jose";
 import type { AppCoreDependencies } from "../app_deps.ts";
+import type { DatabaseClient } from "../db/databaseClient.ts";
 import type { AppEnv } from "../config/env.ts";
 import { createPostgresDatabaseClient } from "../db/databaseClient.ts";
 import { runMigrations } from "../db/migrate.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "../services/llm/llmTypes.ts";
+import { AuditService } from "../services/auditService.ts";
 import { OAuthService } from "../services/oauthService.ts";
+import { TenantService } from "../services/tenantService.ts";
 import { ToolExecutor } from "../services/tools/toolExecutor.ts";
 import {
   baseTestEnv,
   createAgentAndDocument,
   startTestServer,
   TEST_JWT_SECRET,
+  withTestEnv,
 } from "../test_helpers.ts";
 import { resolveTestDatabaseUrl } from "../test_database_url.ts";
 import postgres from "postgres";
@@ -48,6 +52,8 @@ function oauthStubEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     googleClientId: "test-google-client",
     googleClientSecret: "test-google-secret",
     googleRedirectUri: "http://localhost:8090/api/auth/google/callback",
+    googleLoginRedirectUri:
+      "http://localhost:8090/api/auth/google/login/callback",
     frontendUrl: "http://localhost:5174",
     emailServiceUrl: null,
     emailServiceToken: null,
@@ -411,10 +417,126 @@ Deno.test({
 });
 
 class OAuthNotionInvalid extends OAuthService {
+  constructor(db: DatabaseClient, env: AppEnv, tenantService: TenantService) {
+    super(db, env, tenantService);
+  }
+
   override async saveNotionToken(_userId: string, _token: string): Promise<void> {
     throw new Error("Ungültiger Notion Token");
   }
 }
+
+Deno.test({
+  name: "E2E GET /api/auth/google — Tenant ohne Google, APP_ENV=production → 503",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const url = resolveTestDatabaseUrl();
+    await withTestEnv(
+      baseTestEnv({
+        DATABASE_URL: url,
+        APP_ENV: "production",
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: "",
+        GMAIL_CLIENT_ID: "",
+        GMAIL_CLIENT_SECRET: "",
+      }),
+      async () => {
+        await runMigrations(url);
+        const sql = postgres(url, { max: 2 });
+        const userId = crypto.randomUUID();
+        const tenantId = crypto.randomUUID();
+        const slug = `no-google-${userId.slice(0, 8)}`;
+        try {
+          await sql`
+        INSERT INTO cos_tenants (id, name, slug, plan)
+        VALUES (${tenantId}::uuid, 'No Google Org', ${slug}, 'starter')
+      `;
+          await sql`
+        INSERT INTO cos_users (id, email, name, role, is_active, tenant_id)
+        VALUES (${userId}::uuid, ${`g503-${userId.slice(0, 8)}@t.local`}, 'U', 'member', true, ${tenantId}::uuid)
+      `;
+          const d = coreDeps(sql);
+          const { baseUrl, shutdown } = await startTestServer(
+            baseTestEnv({ DATABASE_URL: url }),
+            d,
+          );
+          try {
+            const jwt = await mintJwt(userId);
+            const res = await fetch(`${baseUrl}/api/auth/google`, {
+              headers: { Authorization: `Bearer ${jwt}` },
+            });
+            assertEquals(res.status, 503);
+            const j = await res.json() as { error: string; hint?: string };
+            assertEquals(j.error.includes("Google"), true);
+            assertEquals(typeof j.hint, "string");
+          } finally {
+            shutdown();
+          }
+        } finally {
+          await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+          await sql`DELETE FROM cos_tenants WHERE id = ${tenantId}::uuid`;
+          await sql.end({ timeout: 5 });
+        }
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "E2E GET /api/auth/slack — Tenant ohne Slack, APP_ENV=production → 503",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const url = resolveTestDatabaseUrl();
+    await withTestEnv(
+      baseTestEnv({
+        DATABASE_URL: url,
+        APP_ENV: "production",
+        SLACK_CLIENT_ID: "",
+        SLACK_CLIENT_SECRET: "",
+      }),
+      async () => {
+        await runMigrations(url);
+        const sql = postgres(url, { max: 2 });
+        const userId = crypto.randomUUID();
+        const tenantId = crypto.randomUUID();
+        const slug = `no-slack-${userId.slice(0, 8)}`;
+        try {
+          await sql`
+        INSERT INTO cos_tenants (id, name, slug, plan)
+        VALUES (${tenantId}::uuid, 'No Slack Org', ${slug}, 'starter')
+      `;
+          await sql`
+        INSERT INTO cos_users (id, email, name, role, is_active, tenant_id)
+        VALUES (${userId}::uuid, ${`s503-${userId.slice(0, 8)}@t.local`}, 'U', 'member', true, ${tenantId}::uuid)
+      `;
+          const d = coreDeps(sql);
+          const { baseUrl, shutdown } = await startTestServer(
+            baseTestEnv({ DATABASE_URL: url }),
+            d,
+          );
+          try {
+            const jwt = await mintJwt(userId);
+            const res = await fetch(`${baseUrl}/api/auth/slack`, {
+              headers: { Authorization: `Bearer ${jwt}` },
+            });
+            assertEquals(res.status, 503);
+            const j = await res.json() as { error: string; hint?: string };
+            assertEquals(j.error.includes("Slack"), true);
+            assertEquals(typeof j.hint, "string");
+          } finally {
+            shutdown();
+          }
+        } finally {
+          await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+          await sql`DELETE FROM cos_tenants WHERE id = ${tenantId}::uuid`;
+          await sql.end({ timeout: 5 });
+        }
+      },
+    );
+  },
+});
 
 Deno.test({
   name: "E2E PUT /api/connections/notion — Notion 401 (mock) → 422",
@@ -431,15 +553,19 @@ Deno.test({
         VALUES (${userId}::uuid, ${`n422-${userId.slice(0, 8)}@t.local`}, 'C', 'member', true)
       `;
       const base = coreDeps(sql);
+      const auditSvc = new AuditService(base.db);
+      const tenantSvc = new TenantService(base.db, auditSvc);
       const oauthService = new OAuthNotionInvalid(
         base.db,
         oauthStubEnv({
           googleClientId: "",
           googleClientSecret: "",
           googleRedirectUri: "http://localhost/x",
+          googleLoginRedirectUri: "http://localhost/x/login-cb",
         }),
+        tenantSvc,
       );
-      const d = { ...base, oauthService };
+      const d = { ...base, oauthService, tenantService: tenantSvc, auditService: auditSvc };
       const { baseUrl, shutdown } = await startTestServer(
         baseTestEnv({ DATABASE_URL: url }),
         d,

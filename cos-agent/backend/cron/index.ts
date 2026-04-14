@@ -5,6 +5,7 @@ import { startDriveSyncCron } from "./driveSync.ts";
 import { startEmailCategorizationCron } from "./emailCategorization.ts";
 import { startSlackDigestCron } from "./slackDigest.ts";
 import { startWeeklyConsolidatorCron } from "./weeklyConsolidator.ts";
+import { startTaskQueueCron } from "./taskQueue.ts";
 
 /**
  * Cron-Jobs hier registrieren (eine Datei pro Job). Jeder Lauf: strukturierte Logs,
@@ -28,4 +29,5 @@ export function startAllCrons(deps: AppDependencies, env: AppEnv): void {
   startWeeklyConsolidatorCron(deps, env);
   startDriveSyncCron(deps, env);
   startSlackDigestCron(deps, env);
+  startTaskQueueCron(deps, env);
 }

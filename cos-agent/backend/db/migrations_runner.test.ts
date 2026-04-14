@@ -5,15 +5,19 @@ import { runMigrations } from "./migrate.ts";
 
 const EXPECTED_TABLES = [
   "agent_configs",
+  "cos_audit_log",
   "cos_conversations",
   "cos_document_chunks",
   "cos_documents",
   "cos_learnings",
   "cos_llm_calls",
+  "cos_login_attempts",
   "cos_oauth_states",
   "cos_schedules",
+  "cos_tenants",
   "cos_user_contexts",
   "cos_users",
+  "cos_task_queue",
   "schema_migrations",
 ] as const;
 
@@ -26,10 +30,15 @@ const EXPECTED_MIGRATION_FILES = [
   "006_learnings.sql",
   "007_documents.sql",
   "008_schedules_extended.sql",
+  "009_password_and_oauth_login.sql",
+  "010_task_queue.sql",
+  "011_password_security.sql",
+  "012_tenants.sql",
+  "013_onboarding.sql",
 ] as const;
 
 Deno.test({
-  name: "Migration-Runner — 001–008, schema_migrations, Idempotenz",
+  name: "Migration-Runner — 001–013, schema_migrations, Idempotenz",
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -46,6 +55,24 @@ Deno.test({
         `;
         assertEquals(rows.length, 1, `Tabelle fehlt: ${table}`);
       }
+
+      const tenantCol = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'cos_users'
+          AND column_name = 'tenant_id'
+      `;
+      assertEquals(tenantCol.length, 1);
+
+      const onboardCol = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'cos_users'
+          AND column_name = 'onboarding_completed'
+      `;
+      assertEquals(onboardCol.length, 1);
 
       const applied = await sql`
         SELECT name FROM schema_migrations ORDER BY name

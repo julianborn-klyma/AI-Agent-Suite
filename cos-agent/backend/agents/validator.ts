@@ -1,5 +1,5 @@
 import type { LlmClient } from "../services/llm/llmTypes.ts";
-import { CHAT_MODEL } from "./constants.ts";
+import { MODEL_IDS } from "./modelSelector.ts";
 import { parseJsonObject } from "./jsonUtils.ts";
 import type {
   AgentContext,
@@ -29,6 +29,7 @@ export class ValidatorAgent {
     proposedResponse: string;
     results: SubAgentResult[];
     context: AgentContext;
+    isRetry?: boolean;
   }): Promise<ValidationResult> {
     const resultsJson = JSON.stringify(
       params.results.map((r) => ({
@@ -39,8 +40,9 @@ export class ValidatorAgent {
       })),
     );
 
+    const model = params.isRetry ? MODEL_IDS.opus : MODEL_IDS.haiku;
     const res = await this.llm.chat({
-      model: CHAT_MODEL,
+      model,
       system:
         "Du bist ein strenger Qualitätsprüfer. Antworte NUR mit einem JSON-Objekt (kein Markdown) mit Feldern: " +
         "approved (boolean), issues (array von {type, severity: low|medium|high, detail}), " +

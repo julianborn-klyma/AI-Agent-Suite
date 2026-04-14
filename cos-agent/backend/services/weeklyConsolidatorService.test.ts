@@ -4,7 +4,9 @@ import type {
   DatabaseClient,
   Learning,
 } from "../db/databaseClient.ts";
+import { testAuthDbStubMethods } from "../db/databaseClientTestAuthStubs.ts";
 import { documentTestStubs, scheduleTestStubs } from "../db/documentTestStubs.ts";
+import { taskQueueTestStubs } from "../db/taskQueueTestStubs.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "./llm/llmTypes.ts";
 import { LearningService } from "./learningService.ts";
 import { WeeklyConsolidatorService } from "./weeklyConsolidatorService.ts";
@@ -60,6 +62,25 @@ function mkLearning(p: {
 }
 
 class WeeklyUnitDb implements DatabaseClient {
+  countLoginAttemptsByIpSince =
+    testAuthDbStubMethods.countLoginAttemptsByIpSince;
+  insertLoginAttempt = testAuthDbStubMethods.insertLoginAttempt;
+  incrementFailedLogin = testAuthDbStubMethods.incrementFailedLogin;
+  recordSuccessfulLogin = testAuthDbStubMethods.recordSuccessfulLogin;
+  updateUserPasswordHash = testAuthDbStubMethods.updateUserPasswordHash;
+  insertAuditLog = testAuthDbStubMethods.insertAuditLog;
+  listAuditLog = testAuthDbStubMethods.listAuditLog;
+  findUserWithPasswordById = testAuthDbStubMethods.findUserWithPasswordById;
+  getTenant = testAuthDbStubMethods.getTenant;
+  getTenantBySlug = testAuthDbStubMethods.getTenantBySlug;
+  listTenants = testAuthDbStubMethods.listTenants;
+  insertTenant = testAuthDbStubMethods.insertTenant;
+  updateTenant = testAuthDbStubMethods.updateTenant;
+  updateTenantCredentials = testAuthDbStubMethods.updateTenantCredentials;
+  getTenantForUser = testAuthDbStubMethods.getTenantForUser;
+  setOnboardingCompleted = testAuthDbStubMethods.setOnboardingCompleted;
+  getUserOnboardingSnapshot = testAuthDbStubMethods.getUserOnboardingSnapshot;
+
   readonly upserts: { userId: string; key: string; value: string }[] = [];
   readonly bulkConfirmCalls: { userId: string; min: number }[] = [];
   readonly purgeSummaryCalls: { prefixes: string[]; days: number }[] = [];
@@ -209,6 +230,13 @@ class WeeklyUnitDb implements DatabaseClient {
   }
 
   recordScheduleRun = scheduleTestStubs.recordScheduleRun;
+
+  insertTask = taskQueueTestStubs.insertTask;
+  getTasks = taskQueueTestStubs.getTasks;
+  getTask = taskQueueTestStubs.getTask;
+  getNextPendingTask = taskQueueTestStubs.getNextPendingTask;
+  updateTaskStatus = taskQueueTestStubs.updateTaskStatus;
+  cancelTask = taskQueueTestStubs.cancelTask;
 }
 
 function weeklyShellDb(opts: {

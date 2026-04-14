@@ -12,7 +12,9 @@ import type {
   DocumentChunk,
   Learning,
 } from "../db/databaseClient.ts";
+import { testAuthDbStubMethods } from "../db/databaseClientTestAuthStubs.ts";
 import { scheduleTestStubs } from "../db/documentTestStubs.ts";
+import { taskQueueTestStubs } from "../db/taskQueueTestStubs.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "./llm/llmTypes.ts";
 import {
   DocumentNotFoundError,
@@ -21,6 +23,25 @@ import {
 
 /** In-Memory-DB nur für Document-Pfade in DocumentService-Tests. */
 class DocTestDb implements DatabaseClient {
+  countLoginAttemptsByIpSince =
+    testAuthDbStubMethods.countLoginAttemptsByIpSince;
+  insertLoginAttempt = testAuthDbStubMethods.insertLoginAttempt;
+  incrementFailedLogin = testAuthDbStubMethods.incrementFailedLogin;
+  recordSuccessfulLogin = testAuthDbStubMethods.recordSuccessfulLogin;
+  updateUserPasswordHash = testAuthDbStubMethods.updateUserPasswordHash;
+  insertAuditLog = testAuthDbStubMethods.insertAuditLog;
+  listAuditLog = testAuthDbStubMethods.listAuditLog;
+  findUserWithPasswordById = testAuthDbStubMethods.findUserWithPasswordById;
+  getTenant = testAuthDbStubMethods.getTenant;
+  getTenantBySlug = testAuthDbStubMethods.getTenantBySlug;
+  listTenants = testAuthDbStubMethods.listTenants;
+  insertTenant = testAuthDbStubMethods.insertTenant;
+  updateTenant = testAuthDbStubMethods.updateTenant;
+  updateTenantCredentials = testAuthDbStubMethods.updateTenantCredentials;
+  getTenantForUser = testAuthDbStubMethods.getTenantForUser;
+  setOnboardingCompleted = testAuthDbStubMethods.setOnboardingCompleted;
+  getUserOnboardingSnapshot = testAuthDbStubMethods.getUserOnboardingSnapshot;
+
   documents: Document[] = [];
   chunks: DocumentChunk[] = [];
   searchChunksCalls = 0;
@@ -230,9 +251,35 @@ class DocTestDb implements DatabaseClient {
     scheduleTestStubs.purgeUserContextSummariesOlderThan;
   purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
   recordScheduleRun = scheduleTestStubs.recordScheduleRun;
+
+  insertTask = taskQueueTestStubs.insertTask;
+  getTasks = taskQueueTestStubs.getTasks;
+  getTask = taskQueueTestStubs.getTask;
+  getNextPendingTask = taskQueueTestStubs.getNextPendingTask;
+  updateTaskStatus = taskQueueTestStubs.updateTaskStatus;
+  cancelTask = taskQueueTestStubs.cancelTask;
 }
 
 class StubDb implements DatabaseClient {
+  countLoginAttemptsByIpSince =
+    testAuthDbStubMethods.countLoginAttemptsByIpSince;
+  insertLoginAttempt = testAuthDbStubMethods.insertLoginAttempt;
+  incrementFailedLogin = testAuthDbStubMethods.incrementFailedLogin;
+  recordSuccessfulLogin = testAuthDbStubMethods.recordSuccessfulLogin;
+  updateUserPasswordHash = testAuthDbStubMethods.updateUserPasswordHash;
+  insertAuditLog = testAuthDbStubMethods.insertAuditLog;
+  listAuditLog = testAuthDbStubMethods.listAuditLog;
+  findUserWithPasswordById = testAuthDbStubMethods.findUserWithPasswordById;
+  getTenant = testAuthDbStubMethods.getTenant;
+  getTenantBySlug = testAuthDbStubMethods.getTenantBySlug;
+  listTenants = testAuthDbStubMethods.listTenants;
+  insertTenant = testAuthDbStubMethods.insertTenant;
+  updateTenant = testAuthDbStubMethods.updateTenant;
+  updateTenantCredentials = testAuthDbStubMethods.updateTenantCredentials;
+  getTenantForUser = testAuthDbStubMethods.getTenantForUser;
+  setOnboardingCompleted = testAuthDbStubMethods.setOnboardingCompleted;
+  getUserOnboardingSnapshot = testAuthDbStubMethods.getUserOnboardingSnapshot;
+
   async findAgentConfigForUser(): Promise<null> {
     return null;
   }
@@ -324,6 +371,13 @@ class StubDb implements DatabaseClient {
     scheduleTestStubs.purgeUserContextSummariesOlderThan;
   purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
   recordScheduleRun = scheduleTestStubs.recordScheduleRun;
+
+  insertTask = taskQueueTestStubs.insertTask;
+  getTasks = taskQueueTestStubs.getTasks;
+  getTask = taskQueueTestStubs.getTask;
+  getNextPendingTask = taskQueueTestStubs.getNextPendingTask;
+  updateTaskStatus = taskQueueTestStubs.updateTaskStatus;
+  cancelTask = taskQueueTestStubs.cancelTask;
 }
 
 class CaptureLlm implements LlmClient {
