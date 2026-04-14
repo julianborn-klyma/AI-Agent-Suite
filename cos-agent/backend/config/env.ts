@@ -1,4 +1,5 @@
 import { load } from "@std/dotenv";
+import { dirname, fromFileUrl, join } from "@std/path";
 
 const MIN_SECRET_LEN = 32;
 const MIN_ANTHROPIC_KEY_LEN = 20;
@@ -20,6 +21,10 @@ export type AppEnv = {
   /** Optional: E-Mail-Versand für Daily Briefing (`/api/send`). */
   emailServiceUrl: string | null;
   emailServiceToken: string | null;
+  /** Optional: Slack OAuth (User-Token für Slack-Tools / Digest). */
+  slackClientId: string;
+  slackClientSecret: string;
+  slackRedirectUri: string;
 };
 
 let cached: AppEnv | null = null;
@@ -35,9 +40,31 @@ function parseOrigins(raw: string | undefined): string[] {
   return list;
 }
 
+/** Lädt `.env`-Dateien unabhängig vom CWD: zuerst Repo-Root, dann `backend/`, zuletzt CWD (überschreibt). */
+async function loadDotenvFiles(): Promise<void> {
+  const configDir = dirname(fromFileUrl(import.meta.url));
+  const backendRoot = join(configDir, "..");
+  const repoRoot = join(backendRoot, "..");
+  const candidates = [
+    join(repoRoot, ".env"),
+    join(backendRoot, ".env"),
+  ];
+  for (const envPath of candidates) {
+    try {
+      const st = await Deno.stat(envPath);
+      if (st.isFile) {
+        await load({ envPath, export: true });
+      }
+    } catch {
+      /* Datei fehlt — ignorieren */
+    }
+  }
+  await load({ export: true });
+}
+
 export async function loadEnv(): Promise<AppEnv> {
   if (cached) return cached;
-  await load({ export: true });
+  await loadDotenvFiles();
 
   const port = Number(Deno.env.get("PORT") ?? "8787");
   const databaseUrl = Deno.env.get("DATABASE_URL");
@@ -90,6 +117,12 @@ export async function loadEnv(): Promise<AppEnv> {
     }
   }
 
+  const slackClientId = Deno.env.get("SLACK_CLIENT_ID")?.trim() ?? "";
+  const slackClientSecret = Deno.env.get("SLACK_CLIENT_SECRET")?.trim() ?? "";
+  const slackRedirectUri =
+    Deno.env.get("SLACK_REDIRECT_URI")?.trim() ??
+    "http://localhost:8090/api/auth/slack/callback";
+
   cached = {
     port,
     databaseUrl,
@@ -103,6 +136,9 @@ export async function loadEnv(): Promise<AppEnv> {
     frontendUrl,
     emailServiceUrl,
     emailServiceToken: emailServiceTokenRaw,
+    slackClientId,
+    slackClientSecret,
+    slackRedirectUri,
   };
   return cached;
 }

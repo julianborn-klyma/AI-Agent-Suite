@@ -1,15 +1,15 @@
 import { assert, assertEquals } from "@std/assert";
 import * as jose from "jose";
-import type { AppCoreDependencies, AppDependencies } from "../app_deps.ts";
+import type { AppCoreDependencies } from "../app_deps.ts";
 import type { AppEnv } from "../config/env.ts";
 import { createPostgresDatabaseClient } from "../db/databaseClient.ts";
 import { runMigrations } from "../db/migrate.ts";
-import { AgentService } from "../services/agentService.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "../services/llm/llmTypes.ts";
 import { OAuthService } from "../services/oauthService.ts";
 import { ToolExecutor } from "../services/tools/toolExecutor.ts";
 import {
   baseTestEnv,
+  createAgentAndDocument,
   startTestServer,
   TEST_JWT_SECRET,
 } from "../test_helpers.ts";
@@ -51,6 +51,9 @@ function oauthStubEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     frontendUrl: "http://localhost:5174",
     emailServiceUrl: null,
     emailServiceToken: null,
+    slackClientId: "",
+    slackClientSecret: "",
+    slackRedirectUri: "http://localhost:8090/api/auth/slack/callback",
     ...overrides,
   };
 }
@@ -59,8 +62,12 @@ function coreDeps(sql: ReturnType<typeof postgres>): AppCoreDependencies {
   const db = createPostgresDatabaseClient(sql);
   const llm = new FakeLlm();
   const toolExecutor = new ToolExecutor();
-  const agentService = new AgentService(db, llm, toolExecutor);
-  return { db, agentService, sql, llm, toolExecutor };
+  const { agentService, documentService } = createAgentAndDocument(
+    db,
+    llm,
+    toolExecutor,
+  );
+  return { db, agentService, documentService, sql, llm, toolExecutor };
 }
 
 Deno.test({
@@ -118,9 +125,11 @@ Deno.test({
         const j = await res.json() as {
           google: boolean;
           notion: boolean;
+          slack: boolean;
         };
         assertEquals(j.google, false);
         assertEquals(j.notion, false);
+        assertEquals(j.slack, false);
       } finally {
         shutdown();
       }
@@ -430,7 +439,7 @@ Deno.test({
           googleRedirectUri: "http://localhost/x",
         }),
       );
-      const d: AppDependencies = { ...base, oauthService };
+      const d = { ...base, oauthService };
       const { baseUrl, shutdown } = await startTestServer(
         baseTestEnv({ DATABASE_URL: url }),
         d,

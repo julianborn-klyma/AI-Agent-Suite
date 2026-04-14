@@ -1,6 +1,10 @@
 import type { AppDependencies } from "../app_deps.ts";
 import type { AppEnv } from "../config/env.ts";
 import { startDailyBriefingCron } from "./dailyBriefing.ts";
+import { startDriveSyncCron } from "./driveSync.ts";
+import { startEmailCategorizationCron } from "./emailCategorization.ts";
+import { startSlackDigestCron } from "./slackDigest.ts";
+import { startWeeklyConsolidatorCron } from "./weeklyConsolidator.ts";
 
 /**
  * Cron-Jobs hier registrieren (eine Datei pro Job). Jeder Lauf: strukturierte Logs,
@@ -20,4 +24,8 @@ export function registerCronJobs(_env: AppEnv): void {
 
 export function startAllCrons(deps: AppDependencies, env: AppEnv): void {
   startDailyBriefingCron(deps, env);
+  startEmailCategorizationCron(deps, env);
+  startWeeklyConsolidatorCron(deps, env);
+  startDriveSyncCron(deps, env);
+  startSlackDigestCron(deps, env);
 }

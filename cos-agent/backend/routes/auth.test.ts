@@ -2,11 +2,11 @@ import { assertEquals } from "@std/assert";
 import * as jose from "jose";
 import { createPostgresDatabaseClient } from "../db/databaseClient.ts";
 import { runMigrations } from "../db/migrate.ts";
-import { AgentService } from "../services/agentService.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "../services/llm/llmTypes.ts";
 import { ToolExecutor } from "../services/tools/toolExecutor.ts";
 import {
   baseTestEnv,
+  createAgentAndDocument,
   startTestServer,
   TEST_JWT_SECRET,
 } from "../test_helpers.ts";
@@ -42,10 +42,14 @@ Deno.test({
       const db = createPostgresDatabaseClient(sql);
       const llm = new FakeLlm();
       const toolExecutor = new ToolExecutor();
-      const agentService = new AgentService(db, llm, toolExecutor);
+      const { agentService, documentService } = createAgentAndDocument(
+        db,
+        llm,
+        toolExecutor,
+      );
       const { baseUrl, shutdown } = await startTestServer(
         baseTestEnv({ DATABASE_URL: url }),
-        { db, agentService, sql, llm, toolExecutor },
+        { db, agentService, documentService, sql, llm, toolExecutor },
       );
       try {
         const res = await fetch(`${baseUrl}/api/auth/login`, {
@@ -86,10 +90,14 @@ Deno.test({
       const db = createPostgresDatabaseClient(sql);
       const llm = new FakeLlm();
       const toolExecutor = new ToolExecutor();
-      const agentService = new AgentService(db, llm, toolExecutor);
+      const { agentService, documentService } = createAgentAndDocument(
+        db,
+        llm,
+        toolExecutor,
+      );
       const { baseUrl, shutdown } = await startTestServer(
         baseTestEnv({ DATABASE_URL: url }),
-        { db, agentService, sql, llm, toolExecutor },
+        { db, agentService, documentService, sql, llm, toolExecutor },
       );
       try {
         const res = await fetch(`${baseUrl}/api/auth/login`, {
@@ -126,10 +134,14 @@ Deno.test({
       const db = createPostgresDatabaseClient(sql);
       const llm = new FakeLlm();
       const toolExecutor = new ToolExecutor();
-      const agentService = new AgentService(db, llm, toolExecutor);
+      const { agentService, documentService } = createAgentAndDocument(
+        db,
+        llm,
+        toolExecutor,
+      );
       const { baseUrl, shutdown } = await startTestServer(
         baseTestEnv({ DATABASE_URL: url }),
-        { db, agentService, sql, llm, toolExecutor },
+        { db, agentService, documentService, sql, llm, toolExecutor },
       );
       try {
         const res = await fetch(`${baseUrl}/api/auth/login`, {

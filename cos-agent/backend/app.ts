@@ -32,13 +32,41 @@ import { handleAuthLogin } from "./routes/auth.ts";
 import {
   handleConnectionsDelete,
   handleConnectionsGet,
+  handleDriveFolderPut,
   handleGoogleAuthStart,
   handleGoogleCallback,
   handleNotionConnectPut,
+  handleNotionDatabasePut,
+  handleSlackAuthStart,
+  handleSlackCallback,
 } from "./routes/connections.ts";
 import { handleHealth } from "./routes/health.ts";
 import { handleMe } from "./routes/me.ts";
+import {
+  handleDocumentAsk,
+  handleDocumentDelete,
+  handleDocumentGet,
+  handleDocumentVerify,
+  handleDocumentsList,
+  handleDocumentsPost,
+} from "./routes/documents.ts";
+import {
+  handleLearningConfirm,
+  handleLearningDeactivate,
+  handleLearningsList,
+} from "./routes/learnings.ts";
 import { jsonResponse } from "./routes/json.ts";
+import {
+  handleSchedulePatch,
+  handleScheduleRunNowPost,
+  handleSchedulesGet,
+  handleScheduleTogglePatch,
+} from "./routes/schedules.ts";
+import {
+  handleEmailStyleDraftPost,
+  handleEmailStyleGet,
+  handleEmailStyleLearnPost,
+} from "./routes/email-style.ts";
 
 function withCors(req: Request, env: AppEnv, res: Response): Response {
   const extra = corsHeaders(req, env);
@@ -166,6 +194,96 @@ export function createRequestHandler(
       }
     } else if (url.pathname === "/api/me") {
       res = await handleMe(req, env, deps);
+    } else if (url.pathname === "/api/learnings" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleLearningsList(req, env, deps);
+      }
+    } else if (url.pathname === "/api/email-style/learn" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleEmailStyleLearnPost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/email-style/draft" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleEmailStyleDraftPost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/email-style" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleEmailStyleGet(req, env, deps);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/learnings\/[^/]+\/confirm$/) &&
+      req.method === "PATCH"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const id = url.pathname.split("/")[3]!;
+        res = await handleLearningConfirm(req, env, deps, id);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/learnings\/[^/]+\/deactivate$/) &&
+      req.method === "PATCH"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const id = url.pathname.split("/")[3]!;
+        res = await handleLearningDeactivate(req, env, deps, id);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/documents\/([^/]+)\/ask$/) &&
+      req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const m = url.pathname.match(/^\/api\/documents\/([^/]+)\/ask$/);
+        res = await handleDocumentAsk(req, env, deps, m![1]!);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/documents\/([^/]+)\/verify$/) &&
+      req.method === "POST"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const m = url.pathname.match(/^\/api\/documents\/([^/]+)\/verify$/);
+        res = await handleDocumentVerify(req, env, deps, m![1]!);
+      }
+    } else if (url.pathname.match(/^\/api\/documents\/([^/]+)$/)) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        const m = url.pathname.match(/^\/api\/documents\/([^/]+)$/);
+        const id = m![1]!;
+        if (req.method === "GET") {
+          res = await handleDocumentGet(req, env, deps, id);
+        } else if (req.method === "DELETE") {
+          res = await handleDocumentDelete(req, env, deps, id);
+        } else {
+          res = new Response("Method Not Allowed", { status: 405 });
+        }
+      }
+    } else if (url.pathname === "/api/documents" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleDocumentsPost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/documents" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleDocumentsList(req, env, deps);
+      }
     } else if (url.pathname === "/api/chat" && req.method === "POST") {
       if (!deps) {
         res = missingDepsResponse();
@@ -210,6 +328,20 @@ export function createRequestHandler(
         res = await handleGoogleAuthStart(req, env, deps);
       }
     } else if (
+      url.pathname === "/api/auth/slack/callback" && req.method === "GET"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleSlackCallback(req, env, deps);
+      }
+    } else if (url.pathname === "/api/auth/slack" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleSlackAuthStart(req, env, deps);
+      }
+    } else if (
       url.pathname === "/api/connections/notion" && req.method === "PUT"
     ) {
       if (!deps) {
@@ -237,6 +369,59 @@ export function createRequestHandler(
         res = missingDepsResponse();
       } else {
         res = await handleConnectionsGet(req, env, deps);
+      }
+    } else if (
+      url.pathname === "/api/connections/drive-folder" && req.method === "PUT"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleDriveFolderPut(req, env, deps);
+      }
+    } else if (
+      url.pathname === "/api/connections/notion-database" &&
+      req.method === "PUT"
+    ) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleNotionDatabasePut(req, env, deps);
+      }
+    } else if (url.pathname === "/api/schedules" && req.method === "GET") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleSchedulesGet(req, env, deps);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/schedules\/([^/]+)\/toggle$/) &&
+      req.method === "PATCH"
+    ) {
+      const m = url.pathname.match(/^\/api\/schedules\/([^/]+)\/toggle$/);
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleScheduleTogglePatch(req, env, deps, m![1]!);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/schedules\/([^/]+)\/run-now$/) &&
+      req.method === "POST"
+    ) {
+      const m = url.pathname.match(/^\/api\/schedules\/([^/]+)\/run-now$/);
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleScheduleRunNowPost(req, env, deps, m![1]!);
+      }
+    } else if (
+      url.pathname.match(/^\/api\/schedules\/([^/]+)$/) &&
+      req.method === "PATCH"
+    ) {
+      const m = url.pathname.match(/^\/api\/schedules\/([^/]+)$/);
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleSchedulePatch(req, env, deps, m![1]!);
       }
     } else if (url.pathname.startsWith("/api/admin/")) {
       if (!deps) {

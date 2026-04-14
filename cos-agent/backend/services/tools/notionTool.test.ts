@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { DatabaseClient } from "../../db/databaseClient.ts";
+import type { DatabaseClient, Learning } from "../../db/databaseClient.ts";
+import { documentTestStubs, scheduleTestStubs } from "../../db/documentTestStubs.ts";
 import { notionTool } from "./notionTool.ts";
 
 class FakeDb implements DatabaseClient {
@@ -71,6 +72,40 @@ class FakeDb implements DatabaseClient {
   }
 
   async deleteUserContextsByKeys(_userId: string, _keys: string[]): Promise<void> {}
+
+  async getLearnings(): Promise<Learning[]> {
+    return [];
+  }
+  async upsertLearning(): Promise<Learning> {
+    throw new Error("unused");
+  }
+  async upsertLearnings(): Promise<Learning[]> {
+    return [];
+  }
+  async markLearningConflict(): Promise<void> {}
+  async confirmLearning(): Promise<void> {}
+  async deactivateLearning(): Promise<void> {}
+  async bulkConfirmLearningsByTimesConfirmed(): Promise<void> {}
+
+  insertDocument = documentTestStubs.insertDocument;
+  getDocuments = documentTestStubs.getDocuments;
+  getDocument = documentTestStubs.getDocument;
+  updateDocumentProcessed = documentTestStubs.updateDocumentProcessed;
+  deleteDocument = documentTestStubs.deleteDocument;
+  insertChunks = documentTestStubs.insertChunks;
+  searchChunks = documentTestStubs.searchChunks;
+  getChunks = documentTestStubs.getChunks;
+
+  getUserSchedules = scheduleTestStubs.getUserSchedules;
+  upsertJobSchedule = scheduleTestStubs.upsertJobSchedule;
+  toggleJobSchedule = scheduleTestStubs.toggleJobSchedule;
+  initDefaultSchedules = scheduleTestStubs.initDefaultSchedules;
+  listConversationMessagesForUserSince =
+    scheduleTestStubs.listConversationMessagesForUserSince;
+  purgeUserContextSummariesOlderThan =
+    scheduleTestStubs.purgeUserContextSummariesOlderThan;
+  purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
+  recordScheduleRun = scheduleTestStubs.recordScheduleRun;
 }
 
 const userId = "00000000-0000-4000-8000-000000000001";

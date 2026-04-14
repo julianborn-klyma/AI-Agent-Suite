@@ -100,7 +100,10 @@ export function UserDetailPage() {
 
   return (
     <div className="co-admin-page">
-      <Link to="/admin/users" className="co-muted" style={{ fontSize: "0.88rem" }}>
+      <Link
+        to="/admin/users"
+        style={{ fontSize: "0.88rem", color: "var(--link)", textDecoration: "none" }}
+      >
         ← Zurück zu Users
       </Link>
       <h2 className="co-admin-h2" style={{ marginTop: "0.75rem" }}>

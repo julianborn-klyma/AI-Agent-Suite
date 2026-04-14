@@ -33,12 +33,22 @@ export type AdminScheduleRow = {
   user_id: string;
   user_name: string;
   user_email: string;
+  job_type: string;
   cron_expression: string;
   delivery_channel: string;
   delivery_target: string;
   is_active: boolean;
+  display_name: string | null;
+  description: string | null;
   last_run: string | null;
   last_run_status: string | null;
+};
+
+export type AdminSchedulesGroupedRow = {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  jobs: AdminScheduleRow[];
 };
 
 export type CostBreakdownRow = {
@@ -498,6 +508,38 @@ export async function assignConfigFromTemplate(
   }
 }
 
+function mapScheduleAdminRow(r: {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  job_type: string;
+  cron_expression: string;
+  delivery_channel: string;
+  delivery_target: string;
+  is_active: boolean;
+  display_name: string | null;
+  description: string | null;
+  last_run: Date | null;
+  last_run_status: string | null;
+}): AdminScheduleRow {
+  return {
+    id: r.id,
+    user_id: r.user_id,
+    user_name: r.user_name,
+    user_email: r.user_email,
+    job_type: r.job_type,
+    cron_expression: r.cron_expression,
+    delivery_channel: r.delivery_channel,
+    delivery_target: r.delivery_target,
+    is_active: r.is_active,
+    display_name: r.display_name,
+    description: r.description,
+    last_run: r.last_run ? r.last_run.toISOString() : null,
+    last_run_status: r.last_run_status,
+  };
+}
+
 export async function listSchedules(sql: Sql): Promise<AdminScheduleRow[]> {
   const rows = await sql`
     SELECT
@@ -505,39 +547,55 @@ export async function listSchedules(sql: Sql): Promise<AdminScheduleRow[]> {
       s.user_id::text,
       u.name AS user_name,
       u.email AS user_email,
+      s.job_type,
       s.cron_expression,
       s.delivery_channel,
       s.delivery_target,
       s.is_active,
+      s.display_name,
+      s.description,
       s.last_run,
       s.last_run_status
     FROM cos_schedules s
     INNER JOIN cos_users u ON u.id = s.user_id
-    ORDER BY s.created_at DESC
+    ORDER BY u.email ASC, s.job_type ASC
   ` as {
     id: string;
     user_id: string;
     user_name: string;
     user_email: string;
+    job_type: string;
     cron_expression: string;
     delivery_channel: string;
     delivery_target: string;
     is_active: boolean;
+    display_name: string | null;
+    description: string | null;
     last_run: Date | null;
     last_run_status: string | null;
   }[];
-  return rows.map((r) => ({
-    id: r.id,
-    user_id: r.user_id,
-    user_name: r.user_name,
-    user_email: r.user_email,
-    cron_expression: r.cron_expression,
-    delivery_channel: r.delivery_channel,
-    delivery_target: r.delivery_target,
-    is_active: r.is_active,
-    last_run: r.last_run ? r.last_run.toISOString() : null,
-    last_run_status: r.last_run_status,
-  }));
+  return rows.map(mapScheduleAdminRow);
+}
+
+export async function listSchedulesGrouped(
+  sql: Sql,
+): Promise<AdminSchedulesGroupedRow[]> {
+  const flat = await listSchedules(sql);
+  const byUser = new Map<string, AdminSchedulesGroupedRow>();
+  for (const s of flat) {
+    let g = byUser.get(s.user_id);
+    if (!g) {
+      g = {
+        user_id: s.user_id,
+        user_name: s.user_name,
+        user_email: s.user_email,
+        jobs: [],
+      };
+      byUser.set(s.user_id, g);
+    }
+    g.jobs.push(s);
+  }
+  return [...byUser.values()];
 }
 
 /** Für Cron: nur aktive Schedules inkl. aktive User. */
@@ -564,6 +622,7 @@ export async function listActiveBriefingSchedules(
     FROM cos_schedules s
     INNER JOIN cos_users u ON u.id = s.user_id
     WHERE s.is_active = true AND u.is_active = true
+      AND s.job_type = 'daily_briefing'
   ` as {
     user_id: string;
     cron_expression: string;
@@ -590,8 +649,77 @@ export async function updateScheduleBriefingRun(
   await sql`
     UPDATE cos_schedules
     SET last_run = NOW(), last_run_status = ${status}
-    WHERE user_id = ${userId}::uuid
+    WHERE user_id = ${userId}::uuid AND job_type = 'daily_briefing'
   `;
+}
+
+export async function updateScheduleJobRun(
+  sql: Sql,
+  userId: string,
+  jobType: string,
+  status: "success" | "error",
+): Promise<void> {
+  await sql`
+    UPDATE cos_schedules
+    SET last_run = NOW(), last_run_status = ${status}
+    WHERE user_id = ${userId}::uuid AND job_type = ${jobType}
+  `;
+}
+
+export async function listActiveJobSchedules(
+  sql: Sql,
+  jobType: string,
+  opts?: { requireGoogle?: boolean; requireSlack?: boolean },
+): Promise<ActiveBriefingScheduleRow[]> {
+  const rows = await sql`
+    SELECT
+      s.user_id::text AS user_id,
+      s.cron_expression,
+      s.delivery_channel,
+      s.delivery_target,
+      s.last_run,
+      s.last_run_status
+    FROM cos_schedules s
+    INNER JOIN cos_users u ON u.id = s.user_id
+    WHERE s.is_active = true
+      AND u.is_active = true
+      AND s.job_type = ${jobType}
+      ${
+    opts?.requireGoogle
+      ? sql`AND EXISTS (
+        SELECT 1 FROM cos_user_contexts c
+        WHERE c.user_id = s.user_id
+          AND c.key = 'google_connected'
+          AND c.value = 'true'
+      )`
+      : sql``
+  }
+      ${
+    opts?.requireSlack
+      ? sql`AND EXISTS (
+        SELECT 1 FROM cos_user_contexts c
+        WHERE c.user_id = s.user_id
+          AND c.key = 'slack_connected'
+          AND c.value = 'true'
+      )`
+      : sql``
+  }
+  ` as {
+    user_id: string;
+    cron_expression: string;
+    delivery_channel: string;
+    delivery_target: string;
+    last_run: Date | null;
+    last_run_status: string | null;
+  }[];
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    cron_expression: r.cron_expression,
+    delivery_channel: r.delivery_channel,
+    delivery_target: r.delivery_target,
+    last_run: r.last_run,
+    last_run_status: r.last_run_status,
+  }));
 }
 
 export async function upsertSchedule(
@@ -604,8 +732,11 @@ export async function upsertSchedule(
     is_active?: boolean;
   },
 ): Promise<AdminScheduleRow> {
+  const jobType = "daily_briefing";
   const prev = await sql`
-    SELECT is_active FROM cos_schedules WHERE user_id = ${userId}::uuid LIMIT 1
+    SELECT is_active FROM cos_schedules
+    WHERE user_id = ${userId}::uuid AND job_type = ${jobType}
+    LIMIT 1
   ` as { is_active: boolean }[];
   const mergedActive = body.is_active !== undefined
     ? body.is_active
@@ -614,19 +745,25 @@ export async function upsertSchedule(
   const rows = await sql`
     INSERT INTO cos_schedules (
       user_id,
+      job_type,
       cron_expression,
       delivery_channel,
       delivery_target,
-      is_active
+      is_active,
+      display_name,
+      description
     )
     VALUES (
       ${userId}::uuid,
+      ${jobType},
       ${body.cron_expression},
       ${body.delivery_channel},
       ${body.delivery_target},
-      ${mergedActive}
+      ${mergedActive},
+      'Tägliches Briefing',
+      'Zusammenfassung von Tasks, Emails und Terminen jeden Morgen'
     )
-    ON CONFLICT (user_id) DO UPDATE SET
+    ON CONFLICT (user_id, job_type) DO UPDATE SET
       cron_expression = EXCLUDED.cron_expression,
       delivery_channel = EXCLUDED.delivery_channel,
       delivery_target = EXCLUDED.delivery_target,
@@ -634,19 +771,25 @@ export async function upsertSchedule(
     RETURNING
       id::text,
       user_id::text,
+      job_type,
       cron_expression,
       delivery_channel,
       delivery_target,
       is_active,
+      display_name,
+      description,
       last_run,
       last_run_status
   ` as {
     id: string;
     user_id: string;
+    job_type: string;
     cron_expression: string;
     delivery_channel: string;
     delivery_target: string;
     is_active: boolean;
+    display_name: string | null;
+    description: string | null;
     last_run: Date | null;
     last_run_status: string | null;
   }[];
@@ -661,10 +804,13 @@ export async function upsertSchedule(
     user_id: r.user_id,
     user_name: u[0]?.name ?? "",
     user_email: u[0]?.email ?? "",
+    job_type: r.job_type,
     cron_expression: r.cron_expression,
     delivery_channel: r.delivery_channel,
     delivery_target: r.delivery_target,
     is_active: r.is_active,
+    display_name: r.display_name,
+    description: r.description,
     last_run: r.last_run ? r.last_run.toISOString() : null,
     last_run_status: r.last_run_status,
   };

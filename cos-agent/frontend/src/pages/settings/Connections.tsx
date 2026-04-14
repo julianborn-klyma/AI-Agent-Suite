@@ -2,19 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, api } from "../../lib/api.ts";
+import { ApiError, api, API_URL } from "../../lib/api.ts";
 import { getToken } from "../../lib/auth.ts";
 
 type ConnectionsStatus = {
   google: boolean;
   notion: boolean;
+  slack: boolean;
   notionWorkspaceUser?: string;
+  drive_folder_id?: string;
+  notion_database_id?: string;
 };
-
-const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8090").replace(
-  /\/+$/,
-  "",
-);
 
 function parseErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -33,24 +31,33 @@ function parseErrorMessage(err: unknown): string {
 const cardStyle: CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
-  borderRadius: 10,
+  borderRadius: "var(--radius-lg)",
   padding: "1.25rem",
   marginBottom: "1rem",
   maxWidth: 520,
 };
 
-export function ConnectionsPage() {
+export function ConnectionsPanel() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [banner, setBanner] = useState<
     { type: "success" | "error"; text: string } | null
   >(null);
   const [notionToken, setNotionToken] = useState("");
+  const [notionDbId, setNotionDbId] = useState("");
+  const [driveFolderId, setDriveFolderId] = useState("");
 
   const connectionsQ = useQuery({
     queryKey: ["connections"],
     queryFn: () => api.get<ConnectionsStatus>("/api/connections"),
   });
+
+  useEffect(() => {
+    const d = connectionsQ.data;
+    if (!d) return;
+    setDriveFolderId(d.drive_folder_id ?? "");
+    setNotionDbId(d.notion_database_id ?? "");
+  }, [connectionsQ.data]);
 
   useEffect(() => {
     const connected = searchParams.get("connected");
@@ -64,10 +71,23 @@ export function ConnectionsPage() {
         text: "Google erfolgreich verbunden",
       });
     }
+    if (connected === "slack") {
+      void queryClient.invalidateQueries({ queryKey: ["connections"] });
+      setBanner({
+        type: "success",
+        text: "Slack erfolgreich verbunden",
+      });
+    }
     if (err === "google_failed") {
       setBanner({
         type: "error",
         text: "Google Verbindung fehlgeschlagen. Bitte erneut versuchen.",
+      });
+    }
+    if (err === "slack_failed") {
+      setBanner({
+        type: "error",
+        text: "Slack Verbindung fehlgeschlagen. Bitte erneut versuchen.",
       });
     }
 
@@ -78,7 +98,7 @@ export function ConnectionsPage() {
   }, [searchParams, setSearchParams, queryClient]);
 
   const disconnectM = useMutation({
-    mutationFn: (provider: "google" | "notion") =>
+    mutationFn: (provider: "google" | "notion" | "slack") =>
       api.delete<{ disconnected: boolean }>(`/api/connections/${provider}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["connections"] });
@@ -95,13 +115,42 @@ export function ConnectionsPage() {
     },
   });
 
+  const driveFolderM = useMutation({
+    mutationFn: (folder_id: string) =>
+      api.put<{ saved: boolean }>("/api/connections/drive-folder", { folder_id }),
+    onSuccess: () => {
+      setBanner({ type: "success", text: "Drive-Ordner-ID gespeichert" });
+      void queryClient.invalidateQueries({ queryKey: ["connections"] });
+    },
+  });
+
+  const notionDbM = useMutation({
+    mutationFn: (database_id: string) =>
+      api.put<{ saved: boolean }>("/api/connections/notion-database", { database_id }),
+    onSuccess: () => {
+      setBanner({ type: "success", text: "Notion-Datenbank-ID gespeichert" });
+      void queryClient.invalidateQueries({ queryKey: ["connections"] });
+    },
+  });
+
   function connectGoogle() {
     const t = getToken();
     if (!t) {
       setBanner({ type: "error", text: "Nicht angemeldet." });
       return;
     }
-    window.location.href = `${API_BASE}/api/auth/google?token=${encodeURIComponent(t)}`;
+    const base = API_URL || "";
+    window.location.href = `${base}/api/auth/google?token=${encodeURIComponent(t)}`;
+  }
+
+  function connectSlack() {
+    const t = getToken();
+    if (!t) {
+      setBanner({ type: "error", text: "Nicht angemeldet." });
+      return;
+    }
+    const base = API_URL || "";
+    window.location.href = `${base}/api/auth/slack?token=${encodeURIComponent(t)}`;
   }
 
   function saveNotion() {
@@ -115,6 +164,26 @@ export function ConnectionsPage() {
     }
     setBanner(null);
     notionM.mutate(t);
+  }
+
+  function saveDriveFolder() {
+    const id = driveFolderId.trim();
+    if (!id) {
+      setBanner({ type: "error", text: "Ordner-ID darf nicht leer sein." });
+      return;
+    }
+    setBanner(null);
+    driveFolderM.mutate(id);
+  }
+
+  function saveNotionDb() {
+    const id = notionDbId.trim();
+    if (!id) {
+      setBanner({ type: "error", text: "Datenbank-ID darf nicht leer sein." });
+      return;
+    }
+    setBanner(null);
+    notionDbM.mutate(id);
   }
 
   if (connectionsQ.isPending) {
@@ -132,43 +201,10 @@ export function ConnectionsPage() {
 
   return (
     <div>
-      <nav style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-        <Link to="/settings" style={{ color: "var(--muted)" }}>
-          Einstellungen
-        </Link>
-        <span style={{ color: "var(--muted)" }}> / </span>
-        <span style={{ color: "var(--text)", fontWeight: 600 }}>Verbindungen</span>
-      </nav>
-      <h2 style={{ marginTop: 0 }} data-testid="connections-title">
-        Verbindungen
-      </h2>
-      <p style={{ color: "var(--muted)", marginTop: "-0.25rem" }}>
-        Verknüpfe externe Dienste für den Agenten. Notion: Internal-Token von{" "}
-        <a href="https://www.notion.so/my-integrations" target="_blank" rel="noreferrer">
-          my-integrations
-        </a>{" "}
-        unten einfügen und speichern.
-      </p>
-
       {banner && (
         <div
           role="status"
-          style={{
-            marginBottom: "1rem",
-            padding: "0.65rem 0.85rem",
-            borderRadius: 8,
-            fontSize: "0.9rem",
-            background:
-              banner.type === "success"
-                ? "rgba(22, 163, 74, 0.12)"
-                : "rgba(185, 28, 28, 0.1)",
-            color: banner.type === "success" ? "#166534" : "var(--danger)",
-            border: `1px solid ${
-              banner.type === "success"
-                ? "rgba(22, 163, 74, 0.35)"
-                : "rgba(185, 28, 28, 0.25)"
-            }`,
-          }}
+          className={`co-banner ${banner.type === "success" ? "co-banner--success" : "co-banner--error"}`}
         >
           {banner.text}
         </div>
@@ -190,33 +226,14 @@ export function ConnectionsPage() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 700, fontSize: "1.05rem" }}>
-              Google (Gmail + Drive)
-            </div>
+            <div className="co-card-title">Google (Gmail + Drive + Kalender)</div>
             <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-              Zugriff auf E-Mails und Dokumente. Gmail-Triage, Drive-Dokumente lesen.
+              Zugriff auf E-Mails, Dokumente und Termine — für Briefings, Drive-Sync und
+              Kalender.
             </p>
             {s.google && (
-              <div
-                style={{
-                  marginTop: "0.65rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  fontSize: "0.9rem",
-                  color: "#166534",
-                  fontWeight: 600,
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#22c55e",
-                    display: "inline-block",
-                  }}
-                />
+              <div className="co-connected-pill" style={{ marginTop: "0.65rem" }}>
+                <span className="co-connected-pill-dot" />
                 Verbunden
               </div>
             )}
@@ -231,9 +248,9 @@ export function ConnectionsPage() {
                   fontSize: "0.8rem",
                   padding: "0.35rem 0.6rem",
                   color: "var(--danger)",
-                  border: "1px solid rgba(185, 28, 28, 0.35)",
+                  border: "1px solid var(--danger-border)",
                   background: "transparent",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-md)",
                   cursor: disconnectM.isPending ? "wait" : "pointer",
                 }}
               >
@@ -245,10 +262,10 @@ export function ConnectionsPage() {
                 onClick={connectGoogle}
                 style={{
                   padding: "0.45rem 0.85rem",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-md)",
                   border: "none",
                   background: "var(--accent)",
-                  color: "#fff",
+                  color: "var(--accent-foreground)",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -261,9 +278,10 @@ export function ConnectionsPage() {
       </div>
 
       <div style={cardStyle}>
-        <div style={{ fontWeight: 700, fontSize: "1.05rem" }}>Notion</div>
+        <div className="co-card-title">Notion</div>
         <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-          Tasks und gesamter Workspace-Inhalt. Voller Zugriff via Internal Token.
+          Voller Workspace-Zugriff via Internal Token. Datenbank-ID für Task-Tracking
+          optional.
         </p>
         {s.notion && (
           <div
@@ -274,25 +292,8 @@ export function ConnectionsPage() {
               gap: "0.25rem",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                fontSize: "0.9rem",
-                color: "#166534",
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#22c55e",
-                  display: "inline-block",
-                }}
-              />
+            <div className="co-connected-pill">
+              <span className="co-connected-pill-dot" />
               Verbunden
               {s.notionWorkspaceUser && (
                 <span style={{ color: "var(--muted)", fontWeight: 400 }}>
@@ -324,9 +325,9 @@ export function ConnectionsPage() {
               flex: "1 1 200px",
               minWidth: 0,
               padding: "0.45rem 0.6rem",
-              borderRadius: 6,
+              borderRadius: "var(--radius-md)",
               border: "1px solid var(--border)",
-              fontFamily: "ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: "0.85rem",
             }}
           />
@@ -336,10 +337,10 @@ export function ConnectionsPage() {
             disabled={notionM.isPending || !notionToken.trim()}
             style={{
               padding: "0.45rem 0.85rem",
-              borderRadius: 6,
+              borderRadius: "var(--radius-md)",
               border: "none",
               background: "var(--accent)",
-              color: "#fff",
+              color: "var(--accent-foreground)",
               fontWeight: 600,
               cursor: notionM.isPending ? "wait" : "pointer",
               opacity: notionM.isPending || !notionToken.trim() ? 0.65 : 1,
@@ -348,6 +349,7 @@ export function ConnectionsPage() {
             {notionM.isPending ? "Prüfen…" : "Speichern"}
           </button>
         </div>
+
         <p style={{ margin: "0.65rem 0 0", fontSize: "0.8rem", color: "var(--muted)" }}>
           ℹ️{" "}
           <a
@@ -358,6 +360,52 @@ export function ConnectionsPage() {
             notion.so/my-integrations
           </a>
         </p>
+
+        <div style={{ marginTop: "1rem" }}>
+          <label
+            htmlFor="notion-db"
+            style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}
+          >
+            Notion-Datenbank-ID (Tasks)
+          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+            <input
+              id="notion-db"
+              type="text"
+              autoComplete="off"
+              placeholder="xxx…"
+              value={notionDbId}
+              onChange={(e) => setNotionDbId(e.target.value)}
+              style={{
+                flex: "1 1 200px",
+                minWidth: 0,
+                padding: "0.45rem 0.6rem",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.85rem",
+              }}
+            />
+            <button
+              type="button"
+              onClick={saveNotionDb}
+              disabled={notionDbM.isPending || !notionDbId.trim()}
+              style={{
+                padding: "0.45rem 0.85rem",
+                borderRadius: "var(--radius-md)",
+                border: "none",
+                background: "var(--accent)",
+                color: "var(--accent-foreground)",
+                fontWeight: 600,
+                cursor: notionDbM.isPending ? "wait" : "pointer",
+                opacity: notionDbM.isPending || !notionDbId.trim() ? 0.65 : 1,
+              }}
+            >
+              {notionDbM.isPending ? "…" : "Speichern"}
+            </button>
+          </div>
+        </div>
+
         {s.notion && (
           <div style={{ marginTop: "0.75rem" }}>
             <button
@@ -368,9 +416,9 @@ export function ConnectionsPage() {
                 fontSize: "0.8rem",
                 padding: "0.35rem 0.6rem",
                 color: "var(--danger)",
-                border: "1px solid rgba(185, 28, 28, 0.35)",
+                border: "1px solid var(--danger-border)",
                 background: "transparent",
-                borderRadius: 6,
+                borderRadius: "var(--radius-md)",
                 cursor: disconnectM.isPending ? "wait" : "pointer",
               }}
             >
@@ -379,6 +427,123 @@ export function ConnectionsPage() {
           </div>
         )}
       </div>
+
+      <div style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "1rem",
+          }}
+        >
+          <div>
+            <div className="co-card-title">Slack</div>
+            <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
+              Liest Nachrichten in deinem Namen (OAuth). Für Digest-Jobs unter{" "}
+              <Link to="/settings/schedules" style={{ color: "var(--accent)" }}>
+                Jobs &amp; Automation
+              </Link>
+              .
+            </p>
+            {s.slack && (
+              <div className="co-connected-pill" style={{ marginTop: "0.65rem" }}>
+                <span className="co-connected-pill-dot" />
+                Verbunden
+              </div>
+            )}
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            {s.slack ? (
+              <button
+                type="button"
+                onClick={() => disconnectM.mutate("slack")}
+                disabled={disconnectM.isPending}
+                style={{
+                  fontSize: "0.8rem",
+                  padding: "0.35rem 0.6rem",
+                  color: "var(--danger)",
+                  border: "1px solid var(--danger-border)",
+                  background: "transparent",
+                  borderRadius: "var(--radius-md)",
+                  cursor: disconnectM.isPending ? "wait" : "pointer",
+                }}
+              >
+                Trennen
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={connectSlack}
+                style={{
+                  padding: "0.45rem 0.85rem",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  background: "var(--accent)",
+                  color: "var(--accent-foreground)",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Verbinden
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <div className="co-card-title">Google Drive Ordner</div>
+        <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
+          Ordner-ID für automatischen Drive-Sync (siehe Jobs). Benötigt verbundenes Google.
+        </p>
+        <div
+          style={{
+            marginTop: "1rem",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
+          <input
+            id="drive-folder"
+            type="text"
+            autoComplete="off"
+            placeholder="Ordner-ID aus der Drive-URL"
+            value={driveFolderId}
+            onChange={(e) => setDriveFolderId(e.target.value)}
+            style={{
+              flex: "1 1 220px",
+              minWidth: 0,
+              padding: "0.45rem 0.6rem",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.85rem",
+            }}
+          />
+          <button
+            type="button"
+            onClick={saveDriveFolder}
+            disabled={driveFolderM.isPending || !driveFolderId.trim()}
+            style={{
+              padding: "0.45rem 0.85rem",
+              borderRadius: "var(--radius-md)",
+              border: "none",
+              background: "var(--accent)",
+              color: "var(--accent-foreground)",
+              fontWeight: 600,
+              cursor: driveFolderM.isPending ? "wait" : "pointer",
+              opacity: driveFolderM.isPending || !driveFolderId.trim() ? 0.65 : 1,
+            }}
+          >
+            {driveFolderM.isPending ? "…" : "Speichern"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
+
+export const ConnectionsPage = ConnectionsPanel;

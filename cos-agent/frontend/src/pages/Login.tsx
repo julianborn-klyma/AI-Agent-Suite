@@ -52,12 +52,15 @@ export function LoginPage() {
           maxWidth: 400,
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: 10,
+          borderRadius: "var(--radius-lg)",
           padding: "1.75rem",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          boxShadow: "var(--shadow-sm)",
         }}
       >
-        <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.35rem" }}>
+        <h1
+          className="co-font-display"
+          style={{ margin: "0 0 0.25rem", fontSize: "1.35rem" }}
+        >
           Anmelden
         </h1>
         <p style={{ margin: "0 0 1.25rem", color: "var(--muted)", fontSize: "0.9rem" }}>
@@ -86,7 +89,7 @@ export function LoginPage() {
             width: "100%",
             padding: "0.55rem 0.65rem",
             border: "1px solid var(--border)",
-            borderRadius: 6,
+            borderRadius: "var(--radius-md)",
             marginBottom: "1rem",
           }}
         />
@@ -109,9 +112,9 @@ export function LoginPage() {
             width: "100%",
             padding: "0.6rem",
             border: "none",
-            borderRadius: 6,
+            borderRadius: "var(--radius-md)",
             background: pending ? "var(--muted)" : "var(--accent)",
-            color: "#fff",
+            color: pending ? "var(--surface)" : "var(--accent-foreground)",
             fontWeight: 600,
           }}
         >

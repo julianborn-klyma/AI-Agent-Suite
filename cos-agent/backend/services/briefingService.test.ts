@@ -1,5 +1,10 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { AgentConfigRow, DatabaseClient } from "../db/databaseClient.ts";
+import type {
+  AgentConfigRow,
+  DatabaseClient,
+  Learning,
+} from "../db/databaseClient.ts";
+import { documentTestStubs, scheduleTestStubs } from "../db/documentTestStubs.ts";
 import { isBriefingDue } from "../cron/dailyBriefing.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "./llm/llmTypes.ts";
 import { BriefingService, DEFAULT_SYSTEM_PROMPT } from "./briefingService.ts";
@@ -93,6 +98,40 @@ class BriefingTestDb implements DatabaseClient {
   }
 
   async deleteUserContextsByKeys(_userId: string, _keys: string[]): Promise<void> {}
+
+  async getLearnings(): Promise<Learning[]> {
+    return [];
+  }
+  async upsertLearning(): Promise<Learning> {
+    throw new Error("unused");
+  }
+  async upsertLearnings(): Promise<Learning[]> {
+    return [];
+  }
+  async markLearningConflict(): Promise<void> {}
+  async confirmLearning(): Promise<void> {}
+  async deactivateLearning(): Promise<void> {}
+  async bulkConfirmLearningsByTimesConfirmed(): Promise<void> {}
+
+  insertDocument = documentTestStubs.insertDocument;
+  getDocuments = documentTestStubs.getDocuments;
+  getDocument = documentTestStubs.getDocument;
+  updateDocumentProcessed = documentTestStubs.updateDocumentProcessed;
+  deleteDocument = documentTestStubs.deleteDocument;
+  insertChunks = documentTestStubs.insertChunks;
+  searchChunks = documentTestStubs.searchChunks;
+  getChunks = documentTestStubs.getChunks;
+
+  getUserSchedules = scheduleTestStubs.getUserSchedules;
+  upsertJobSchedule = scheduleTestStubs.upsertJobSchedule;
+  toggleJobSchedule = scheduleTestStubs.toggleJobSchedule;
+  initDefaultSchedules = scheduleTestStubs.initDefaultSchedules;
+  listConversationMessagesForUserSince =
+    scheduleTestStubs.listConversationMessagesForUserSince;
+  purgeUserContextSummariesOlderThan =
+    scheduleTestStubs.purgeUserContextSummariesOlderThan;
+  purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
+  recordScheduleRun = scheduleTestStubs.recordScheduleRun;
 }
 
 Deno.test("BriefingService — Notion + Gmail Daten im Prompt, Antwort non-empty", async () => {
@@ -116,6 +155,8 @@ Deno.test("BriefingService — Notion + Gmail Daten im Prompt, Antwort non-empty
       success: true,
       data: gmailMails,
     }),
+    slackRunner: async () => ({ success: false, error: "skip" }),
+    calendarRunner: async () => ({ success: false, error: "skip" }),
   });
 
   const out = await svc.generateBriefing("u1");
@@ -143,6 +184,8 @@ Deno.test("BriefingService — ohne notion_database_id: Notion übersprungen, LL
       success: true,
       data: [],
     }),
+    slackRunner: async () => ({ success: false, error: "skip" }),
+    calendarRunner: async () => ({ success: false, error: "skip" }),
   });
   await svc.generateBriefing("u1");
   assertEquals(notionCalls, 0);
@@ -162,6 +205,8 @@ Deno.test("BriefingService — Tool wirft: Briefing wird trotzdem generiert", as
       success: true,
       data: [{ x: 1 }],
     }),
+    slackRunner: async () => ({ success: false, error: "skip" }),
+    calendarRunner: async () => ({ success: false, error: "skip" }),
   });
   const out = await svc.generateBriefing("u1");
   assertEquals(out, "briefing-output");
@@ -176,6 +221,8 @@ Deno.test("BriefingService — kein agent_config: Default-System-Prompt", async 
   const svc = new BriefingService(db, llm, exec, {
     notionRunner: async () => ({ success: true, data: {} }),
     gmailRunner: async () => ({ success: true, data: [] }),
+    slackRunner: async () => ({ success: false, error: "skip" }),
+    calendarRunner: async () => ({ success: false, error: "skip" }),
   });
   await svc.generateBriefing("u1");
   assertEquals(llm.lastRequest!.system, DEFAULT_SYSTEM_PROMPT);

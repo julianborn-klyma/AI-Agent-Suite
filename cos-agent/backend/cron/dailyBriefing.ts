@@ -10,11 +10,11 @@ import { BriefingService, formatGermanDate } from "../services/briefingService.t
 
 const TICK_MS = 60_000;
 
-function berlinDateKey(d: Date): string {
+export function berlinDateKey(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
 }
 
-function berlinClock(now: Date): { hour: number; minute: number; cronDow: number } {
+export function berlinClock(now: Date): { hour: number; minute: number; cronDow: number } {
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Berlin",
     hour: "2-digit",
@@ -167,3 +167,6 @@ export function startDailyBriefingCron(
     }),
   );
 }
+
+/** Paralleler Briefing-Agent-Plan (Notion, Gmail, Kalender, Slack). */
+export { buildDailyBriefingSteps } from "../services/briefingService.ts";

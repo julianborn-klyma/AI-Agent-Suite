@@ -1,14 +1,18 @@
+import { AggregatorAgent } from "../agents/aggregator.ts";
+import { CHAT_MODEL } from "../agents/constants.ts";
+import { buildSystemPromptForUser } from "../agents/contextLoader.ts";
+import { OrchestratorAgent } from "../agents/orchestrator.ts";
+import { ValidatorAgent } from "../agents/validator.ts";
 import type { DatabaseClient } from "../db/databaseClient.ts";
+import { DocumentService } from "./documentService.ts";
+import { LearningService } from "./learningService.ts";
 import type {
   LlmClient,
   LlmMessage,
+  LlmRequest,
   LlmResponse,
-  LlmToolCall,
 } from "./llm/llmTypes.ts";
 import type { ToolExecutor } from "./tools/toolExecutor.ts";
-
-const CHAT_MODEL = "claude-sonnet-4-20250514";
-const MAX_TOOL_LLM_ROUNDS = 3;
 
 /** Grobe Kostenannahme (USD) gemäß Sonnet — Feld für Logs/Analysen. */
 const USD_PER_INPUT_TOKEN = 0.000003;
@@ -27,63 +31,31 @@ export type ChatResponse = {
 export type AgentServiceOptions = {
   /** Für Tests: fester Zeitpunkt für {{NOW}}. */
   now?: () => Date;
+  /** Geteilter DocumentService (z. B. mit AppDependencies). */
+  documentService?: DocumentService;
 };
 
-function formatGermanDateTime(date: Date): string {
-  const timeZone = "Europe/Berlin";
-  const weekday = new Intl.DateTimeFormat("de-DE", {
-    weekday: "long",
-    timeZone,
-  }).format(date);
-  const day = new Intl.DateTimeFormat("de-DE", {
-    day: "numeric",
-    timeZone,
-  }).format(date);
-  const month = new Intl.DateTimeFormat("de-DE", {
-    month: "long",
-    timeZone,
-  }).format(date);
-  const year = new Intl.DateTimeFormat("de-DE", {
-    year: "numeric",
-    timeZone,
-  }).format(date);
-  const hm = new Intl.DateTimeFormat("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone,
-  }).format(date);
-  return `${weekday}, ${day}. ${month} ${year}, ${hm} Uhr`;
-}
-
-function buildUserContextBlock(rows: { key: string; value: string }[]): string {
-  return rows.map((r) => `${r.key}: ${r.value}`).join("\n");
-}
-
-function injectPromptPlaceholders(
-  template: string,
-  userContextBlock: string,
-  nowFormatted: string,
-): string {
-  return template
-    .replaceAll("{{USER_CONTEXT}}", userContextBlock)
-    .replaceAll("{{NOW}}", nowFormatted);
-}
-
-function parseToolInput(tc: LlmToolCall): unknown {
-  const raw = tc.input;
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  }
-  return raw ?? {};
+function wrapLlmWithCallLog(
+  inner: LlmClient,
+  sink: Array<{ response: LlmResponse; latencyMs: number }>,
+): LlmClient {
+  return {
+    async chat(req: LlmRequest): Promise<LlmResponse> {
+      const t0 = performance.now();
+      const response = await inner.chat(req);
+      sink.push({
+        response,
+        latencyMs: Math.round(performance.now() - t0),
+      });
+      return response;
+    },
+  };
 }
 
 export class AgentService {
   private readonly nowFn: () => Date;
+  private readonly learningService: LearningService;
+  private readonly documentService: DocumentService;
 
   constructor(
     private readonly db: DatabaseClient,
@@ -92,6 +64,20 @@ export class AgentService {
     opts?: AgentServiceOptions,
   ) {
     this.nowFn = opts?.now ?? (() => new Date());
+    this.learningService = new LearningService(this.db, this.llm);
+    this.documentService = opts?.documentService ??
+      new DocumentService(this.db, this.llm);
+  }
+
+  /** Aufgelöster System-Prompt (Tests & Admin). */
+  async buildSystemPrompt(userId: string): Promise<string> {
+    return await buildSystemPromptForUser(
+      this.db,
+      userId,
+      this.nowFn,
+      this.learningService,
+      this.documentService,
+    );
   }
 
   async chat(params: {
@@ -99,125 +85,66 @@ export class AgentService {
     sessionId: string;
     message: string;
   }): Promise<ChatResponse> {
-    const { system, tools_enabled } = await this.resolveSystemAndTools(
-      params.userId,
+    const llmCalls: Array<{ response: LlmResponse; latencyMs: number }> = [];
+    const trackedLlm = wrapLlmWithCallLog(this.llm, llmCalls);
+
+    const validator = new ValidatorAgent(trackedLlm);
+    const aggregator = new AggregatorAgent(trackedLlm);
+    const orchestrator = new OrchestratorAgent(
+      trackedLlm,
+      this.db,
+      this.toolExecutor,
+      validator,
+      aggregator,
+      this.nowFn,
+      this.learningService,
+      this.llm,
+      this.documentService,
     );
+
     const history = await this.loadHistory(params.userId, params.sessionId);
-    const messages: LlmMessage[] = [
-      ...history,
-      { role: "user", content: params.message },
-    ];
+    const orch = await orchestrator.run({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      message: params.message,
+      historyMessages: history,
+      now: this.nowFn,
+    });
 
-    const toolDefs = this.toolExecutor.getToolDefinitions(tools_enabled);
-    let totalIn = 0;
-    let totalOut = 0;
-    const tool_calls_made: string[] = [];
-    let lastResponse: LlmResponse = {
-      content: "",
-      input_tokens: 0,
-      output_tokens: 0,
-      stop_reason: "unknown",
-    };
-
-    for (let round = 0; round < MAX_TOOL_LLM_ROUNDS; round++) {
-      const t0 = performance.now();
-      const response = await this.llm.chat({
-        model: CHAT_MODEL,
-        system,
-        messages,
-        tools: toolDefs.length > 0 ? toolDefs : undefined,
-        metadata: { user_id: params.userId, source: "cos-agent" },
-      });
-      const latencyMs = Math.round(performance.now() - t0);
-      totalIn += response.input_tokens;
-      totalOut += response.output_tokens;
-      lastResponse = response;
-
+    for (const c of llmCalls) {
       await this.logLlmCall(
         params.userId,
         params.sessionId,
-        response,
-        latencyMs,
+        c.response,
+        c.latencyMs,
       );
-
-      const calls = response.tool_calls;
-      if (!calls?.length) {
-        break;
-      }
-
-      messages.push({
-        role: "assistant",
-        content: response.content,
-        tool_calls: calls,
-      });
-
-      for (const tc of calls) {
-        tool_calls_made.push(tc.name);
-        const toolInput = parseToolInput(tc);
-        const result = await this.toolExecutor.execute(
-          tc.name,
-          toolInput,
-          params.userId,
-          this.db,
-        );
-        const payload = result.success
-          ? result.data
-          : { error: result.error };
-        messages.push({
-          role: "user",
-          content:
-            `Tool-Result für ${tc.name}: ${JSON.stringify(payload)}`,
-        });
-      }
-
-      if (round === MAX_TOOL_LLM_ROUNDS - 1) {
-        break;
-      }
     }
 
     await this.saveMessages(
       params.userId,
       params.sessionId,
       params.message,
-      lastResponse.content,
+      orch.content,
     );
+
+    const totalIn = llmCalls.reduce(
+      (a, c) => a + c.response.input_tokens,
+      0,
+    );
+    const totalOut = llmCalls.reduce(
+      (a, c) => a + c.response.output_tokens,
+      0,
+    );
+    const last = llmCalls[llmCalls.length - 1]?.response;
 
     return {
-      content: lastResponse.content,
-      tool_calls: lastResponse.tool_calls,
-      tool_calls_made,
+      content: orch.content,
+      tool_calls: last?.tool_calls,
+      tool_calls_made: orch.tool_calls_made,
       input_tokens: totalIn,
       output_tokens: totalOut,
-      stop_reason: lastResponse.stop_reason,
+      stop_reason: last?.stop_reason ?? orch.stop_reason,
     };
-  }
-
-  private async resolveSystemAndTools(
-    userId: string,
-  ): Promise<{ system: string; tools_enabled: string[] }> {
-    const config = await this.db.findAgentConfigForUser(userId);
-    if (config === null || config.system_prompt.trim() === "") {
-      throw new Error(
-        `Kein agent_config (User oder Template) für user_id=${userId}`,
-      );
-    }
-    const contexts = await this.db.listUserContexts(userId);
-    const block = buildUserContextBlock(contexts);
-    const nowFormatted = formatGermanDateTime(this.nowFn());
-    const system = injectPromptPlaceholders(
-      config.system_prompt,
-      block,
-      nowFormatted,
-    );
-    const tools_enabled = config.tools_enabled?.length
-      ? config.tools_enabled
-      : ["notion"];
-    return { system, tools_enabled };
-  }
-
-  private async buildSystemPrompt(userId: string): Promise<string> {
-    const { system } = await this.resolveSystemAndTools(userId);
-    return system;
   }
 
   private async loadHistory(

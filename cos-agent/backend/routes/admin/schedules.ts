@@ -1,6 +1,10 @@
 import type { AppEnv } from "../../config/env.ts";
 import type { AppDependencies } from "../../app_deps.ts";
-import { getUserById, listSchedules, upsertSchedule } from "../../services/adminService.ts";
+import {
+  getUserById,
+  listSchedulesGrouped,
+  upsertSchedule,
+} from "../../services/adminService.ts";
 import { jsonResponse } from "../json.ts";
 import { requireAdminContext } from "./guard.ts";
 
@@ -17,7 +21,7 @@ export async function handleAdminSchedulesList(
   }
   const gate = await requireAdminContext(req, env, deps);
   if (!gate.ok) return gate.response;
-  const data = await listSchedules(deps.sql);
+  const data = await listSchedulesGrouped(deps.sql);
   return jsonResponse(data);
 }
 

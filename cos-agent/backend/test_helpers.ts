@@ -1,7 +1,17 @@
 import { createRequestHandler } from "./app.ts";
 import type { AppCoreDependencies, AppDependencies } from "./app_deps.ts";
+import type { DatabaseClient } from "./db/databaseClient.ts";
 import { loadEnv, resetEnvCacheForTests } from "./config/env.ts";
+import { AgentService } from "./services/agentService.ts";
+import { DocumentService } from "./services/documentService.ts";
+import { DriveSyncService } from "./services/driveSyncService.ts";
+import { EmailCategorizationService } from "./services/emailCategorizationService.ts";
+import { EmailStyleService } from "./services/emailStyleService.ts";
+import { LearningService } from "./services/learningService.ts";
+import type { LlmClient } from "./services/llm/llmTypes.ts";
 import { OAuthService } from "./services/oauthService.ts";
+import type { ToolExecutor } from "./services/tools/toolExecutor.ts";
+import { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
 import { resolveTestDatabaseUrl } from "./test_database_url.ts";
 
 const TEST_SERVICE_TOKEN = "test-service-token-32-chars-minimum!!";
@@ -11,6 +21,56 @@ const TEST_ENCRYPTION_KEY =
   "0000000000000000000000000000000000000000000000000000000000000000";
 
 export { resolveTestDatabaseUrl } from "./test_database_url.ts";
+
+/** Einheitlicher AgentService + DocumentService für E2E-Tests. */
+export function createAgentAndDocument(
+  db: DatabaseClient,
+  llm: LlmClient,
+  toolExecutor: ToolExecutor,
+): { agentService: AgentService; documentService: DocumentService } {
+  const documentService = new DocumentService(db, llm);
+  const agentService = new AgentService(db, llm, toolExecutor, {
+    documentService,
+  });
+  return { agentService, documentService };
+}
+
+/** Ergänzt Test-Deps um Cron-/Schedule-Services (optional in Einzeltests). */
+export function createJobServices(d: {
+  db: DatabaseClient;
+  llm: LlmClient;
+  toolExecutor: ToolExecutor;
+  documentService: DocumentService;
+}): Pick<
+  AppDependencies,
+  | "emailStyleService"
+  | "emailCategorizationService"
+  | "weeklyConsolidatorService"
+  | "driveSyncService"
+> {
+  const learningService = new LearningService(d.db, d.llm);
+  const emailStyleService = new EmailStyleService(d.db, d.llm, d.toolExecutor);
+  return {
+    emailStyleService,
+    emailCategorizationService: new EmailCategorizationService(
+      d.db,
+      d.llm,
+      d.toolExecutor,
+      emailStyleService,
+    ),
+    weeklyConsolidatorService: new WeeklyConsolidatorService(
+      d.db,
+      d.llm,
+      learningService,
+    ),
+    driveSyncService: new DriveSyncService(
+      d.db,
+      d.llm,
+      d.documentService,
+      d.toolExecutor,
+    ),
+  };
+}
 
 export function baseTestEnv(overrides: Record<string, string> = {}): Record<string, string> {
   return {
@@ -53,22 +113,42 @@ export type StartTestServerOptions = {
   onShutdown?: () => void | Promise<void>;
 };
 
+/** Was `startTestServer` akzeptiert: Kern-Deps plus optional OAuth / Job-Services. */
+export type TestServerInputDeps = AppCoreDependencies &
+  Partial<
+    Pick<
+      AppDependencies,
+      | "oauthService"
+      | "emailStyleService"
+      | "emailCategorizationService"
+      | "weeklyConsolidatorService"
+      | "driveSyncService"
+    >
+  >;
+
 export async function startTestServer(
   vars: Record<string, string>,
-  deps?: AppDependencies | AppCoreDependencies,
+  deps?: TestServerInputDeps,
   options?: StartTestServerOptions,
 ): Promise<{ baseUrl: string; shutdown: () => void }> {
   return await withTestEnv(vars, async () => {
     const env = await loadEnv();
-    let resolvedDeps: AppDependencies | undefined = deps as
-      | AppDependencies
-      | undefined;
-    if (deps && (!("oauthService" in deps) || !deps.oauthService)) {
-      const core = deps as AppCoreDependencies;
+    let resolvedDeps: AppDependencies | undefined;
+    if (deps) {
+      const core = deps;
+      const oauthService = core.oauthService ?? new OAuthService(core.db, env);
+      const withOauth = { ...core, oauthService } as AppDependencies;
+      const jobs = createJobServices(withOauth);
       resolvedDeps = {
-        ...core,
-        oauthService: new OAuthService(core.db, env),
-      };
+        ...withOauth,
+        ...jobs,
+        ...(core.emailCategorizationService
+          ? { emailCategorizationService: core.emailCategorizationService }
+          : {}),
+        ...(core.emailStyleService
+          ? { emailStyleService: core.emailStyleService }
+          : {}),
+      } as AppDependencies;
     }
     const handler = createRequestHandler(env, resolvedDeps);
     const ac = new AbortController();

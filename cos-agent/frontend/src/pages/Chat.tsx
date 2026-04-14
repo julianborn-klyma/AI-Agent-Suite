@@ -168,7 +168,7 @@ export function ChatPage() {
                     marginBottom: 4,
                     borderRadius: 6,
                     borderLeft: active ? "3px solid var(--accent)" : "3px solid transparent",
-                    background: active ? "rgba(37, 99, 235, 0.08)" : "transparent",
+                    background: active ? "var(--accent-soft)" : "transparent",
                   }}
                 >
                   <button
@@ -240,16 +240,13 @@ export function ChatPage() {
             lineHeight: 1.4,
           }}
         >
-          <Link to="/settings" style={{ color: "var(--accent)", fontWeight: 600 }}>
+          <Link to="/settings" style={{ color: "var(--link)", fontWeight: 600 }}>
             Einstellungen
           </Link>
           <span>
             {" "}
             → Google &amp; Notion unter{" "}
-            <Link
-              to="/settings/connections"
-              style={{ color: "var(--accent)", fontWeight: 600 }}
-            >
+            <Link to="/settings#verbindungen" style={{ color: "var(--link)", fontWeight: 600 }}>
               Verbindungen
             </Link>
           </span>
@@ -277,7 +274,10 @@ export function ChatPage() {
             gap: "1rem",
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>
+          <span
+            className="co-font-display"
+            style={{ fontWeight: 700, fontSize: "1.05rem" }}
+          >
             Chief of Staff
           </span>
           <time
@@ -309,7 +309,10 @@ export function ChatPage() {
                 padding: "1rem",
               }}
             >
-              <p style={{ margin: "0 0 0.35rem", fontSize: "1.15rem" }}>
+              <p
+                className="co-font-display"
+                style={{ margin: "0 0 0.35rem", fontSize: "1.15rem" }}
+              >
                 Guten Morgen, {user?.name ?? "…"} 👋
               </p>
               <p style={{ margin: "0 0 1.25rem", color: "var(--muted)" }}>
@@ -370,7 +373,7 @@ export function ChatPage() {
                         padding: "0.55rem 0.75rem",
                         borderRadius: 12,
                         background: "var(--accent)",
-                        color: "#fff",
+                        color: "var(--accent-foreground)",
                         fontSize: "0.92rem",
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
@@ -477,7 +480,10 @@ export function ChatPage() {
                 borderRadius: 8,
                 background:
                   isLoading || !input.trim() ? "var(--muted)" : "var(--accent)",
-                color: "#fff",
+                color:
+                  isLoading || !input.trim()
+                    ? "var(--surface)"
+                    : "var(--accent-foreground)",
                 fontWeight: 600,
                 alignSelf: "flex-end",
               }}

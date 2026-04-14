@@ -1,4 +1,16 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8090";
+/**
+ * Ohne `VITE_API_URL`: im Vite-Dev leer → Requests gegen `/api…` (Proxy, kein CORS-Problem).
+ * Production-Build: Fallback `http://localhost:8090` — für Deploy immer `VITE_API_URL` setzen.
+ */
+function resolveApiBaseUrl(): string {
+  const raw = import.meta.env.VITE_API_URL as string | undefined;
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed !== "") return trimmed.replace(/\/+$/, "");
+  if (import.meta.env.DEV) return "";
+  return "http://localhost:8090";
+}
+
+export const API_URL = resolveApiBaseUrl();
 
 /** Muss mit `lib/auth.ts` übereinstimmen. */
 export const COS_TOKEN_KEY = "cos_token";
@@ -21,7 +33,19 @@ export async function apiFetch<T>(
   const headers = new Headers(options.headers);
   const token = localStorage.getItem(COS_TOKEN_KEY);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(url, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (e) {
+    const hint =
+      e instanceof TypeError
+        ? ` Netzwerk: Backend nicht erreichbar oder CORS — im Dev ohne VITE_API_URL den Vite-Proxy nutzen; sonst VITE_API_URL + CORS_ORIGINS prüfen (aktuell: ${API_URL || "(relativ /api)"}).`
+        : "";
+    throw new ApiError(
+      0,
+      `${e instanceof Error ? e.message : "fetch fehlgeschlagen"}${hint}`,
+    );
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -65,4 +89,8 @@ export const api = {
     }),
 
   delete: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+
+  /** multipart/form-data (kein Content-Type setzen — Boundary setzt der Browser). */
+  postForm: <T>(path: string, body: FormData) =>
+    apiFetch<T>(path, { method: "POST", body }),
 };

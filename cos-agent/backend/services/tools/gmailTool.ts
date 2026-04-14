@@ -16,8 +16,11 @@ type GmailAction =
     to: string;
     subject: string;
     body: string;
+    in_reply_to?: string;
   }
-  | { action: "flag_email"; message_id: string; label_ids?: string[] };
+  | { action: "flag_email"; message_id: string; label_ids?: string[] }
+  | { action: "get_sent_emails"; limit?: number }
+  | { action: "analyze_sent_style"; limit?: number };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let bin = "";
@@ -179,12 +182,38 @@ function parseParams(raw: unknown): GmailAction | { error: string } {
     if (typeof o.to !== "string" || !o.to) return { error: "to fehlt." };
     if (typeof o.subject !== "string") return { error: "subject fehlt." };
     if (typeof o.body !== "string") return { error: "body fehlt." };
+    const in_reply_to = typeof o.in_reply_to === "string" && o.in_reply_to.trim()
+      ? o.in_reply_to.trim()
+      : undefined;
     return {
       action: "create_draft",
       to: o.to,
       subject: o.subject,
       body: o.body,
+      in_reply_to,
     };
+  }
+  if (action === "get_sent_emails") {
+    let limit = 50;
+    if (o.limit !== undefined) {
+      const n = Number(o.limit);
+      if (!Number.isInteger(n) || n < 1 || n > 100) {
+        return { error: "limit muss 1–100 sein." };
+      }
+      limit = n;
+    }
+    return { action: "get_sent_emails", limit };
+  }
+  if (action === "analyze_sent_style") {
+    let limit = 30;
+    if (o.limit !== undefined) {
+      const n = Number(o.limit);
+      if (!Number.isInteger(n) || n < 1 || n > 100) {
+        return { error: "limit muss 1–100 sein." };
+      }
+      limit = n;
+    }
+    return { action: "analyze_sent_style", limit };
   }
   if (action === "flag_email") {
     if (typeof o.message_id !== "string" || !o.message_id) {
@@ -200,6 +229,98 @@ function parseParams(raw: unknown): GmailAction | { error: string } {
     };
   }
   return { error: `Unbekannte action: ${String(action)}` };
+}
+
+function decodeBase64Url(data: string): string {
+  const pad = data.length % 4;
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/") +
+    (pad ? "=".repeat(4 - pad) : "");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+type MimePart = {
+  mimeType?: string;
+  body?: { data?: string; size?: number };
+  parts?: MimePart[];
+};
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractPlainFromPart(part: MimePart | undefined): string {
+  if (!part) return "";
+  if (part.mimeType === "text/plain" && part.body?.data) {
+    try {
+      return decodeBase64Url(part.body.data);
+    } catch {
+      return "";
+    }
+  }
+  if (part.parts) {
+    for (const p of part.parts) {
+      const t = extractPlainFromPart(p);
+      if (t.trim()) return t;
+    }
+  }
+  if (part.mimeType === "text/html" && part.body?.data) {
+    try {
+      return stripHtml(decodeBase64Url(part.body.data));
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function extractPlainBody(payload: MimePart | undefined): string {
+  if (!payload) return "";
+  const direct = extractPlainFromPart(payload);
+  if (direct.trim()) return direct;
+  return "";
+}
+
+function firstToRecipient(toHeader: string): string {
+  const first = toHeader.split(",")[0]?.trim() ?? "";
+  const m = /<([^>]+)>/.exec(first);
+  if (m) return m[1]!.trim();
+  return first;
+}
+
+async function fetchGmailProfileEmail(
+  db: DatabaseClient,
+  userId: string,
+  oauth: { clientId: string; clientSecret: string },
+): Promise<string | null> {
+  const r = await gmailFetch(db, userId, "users/me/profile", { method: "GET" }, oauth);
+  if (!r.ok) return null;
+  const addr = (r.data as { emailAddress?: string }).emailAddress;
+  return typeof addr === "string" && addr ? addr.trim().toLowerCase() : null;
+}
+
+async function fetchInternetMessageId(
+  db: DatabaseClient,
+  userId: string,
+  oauth: { clientId: string; clientSecret: string },
+  gmailMessageId: string,
+): Promise<string | null> {
+  const r = await gmailFetch(
+    db,
+    userId,
+    `users/me/messages/${encodeURIComponent(gmailMessageId)}?format=metadata&metadataHeaders=Message-ID`,
+    { method: "GET" },
+    oauth,
+  );
+  if (!r.ok) return null;
+  const m = r.data as { payload?: { headers?: { name?: string; value?: string }[] } };
+  const hm = headerMap(m.payload?.headers);
+  const mid = hm["message-id"];
+  return mid && mid.trim() ? mid.trim() : null;
 }
 
 async function runListUnread(
@@ -308,8 +429,19 @@ async function runCreateDraft(
   to: string,
   subject: string,
   body: string,
+  inReplyToGmailId?: string,
 ): Promise<ToolResult> {
+  const replyHeaders: string[] = [];
+  if (inReplyToGmailId) {
+    const mid = await fetchInternetMessageId(db, userId, oauth, inReplyToGmailId);
+    if (mid) {
+      const ref = mid.includes("<") ? mid : `<${mid}>`;
+      replyHeaders.push(`In-Reply-To: ${ref}`);
+      replyHeaders.push(`References: ${ref}`);
+    }
+  }
   const rfc = [
+    ...replyHeaders,
     `To: ${to}`,
     `Subject: ${subject}`,
     "MIME-Version: 1.0",
@@ -358,24 +490,114 @@ async function runFlagEmail(
   return { success: true, data: { ok: true } };
 }
 
+type SentEmailRow = {
+  id: string;
+  to: string;
+  subject: string;
+  body: string;
+  date: string;
+  char_count: number;
+};
+
+async function runGetSentEmails(
+  db: DatabaseClient,
+  userId: string,
+  oauth: { clientId: string; clientSecret: string },
+  limit: number,
+): Promise<ToolResult> {
+  const me = await fetchGmailProfileEmail(db, userId, oauth);
+  if (!me) {
+    return { success: false, error: "Gmail-Profil nicht lesbar." };
+  }
+
+  const list = await gmailFetch(
+    db,
+    userId,
+    `users/me/messages?q=${encodeURIComponent("in:sent")}&maxResults=${limit}`,
+    { method: "GET" },
+    oauth,
+  );
+  if (!list.ok) {
+    if (list.status === 401) return { success: false, error: AUTH_EXPIRED };
+    return { success: false, error: `Gmail API Fehler: ${list.status}` };
+  }
+  const data = list.data as { messages?: { id: string }[] };
+  const ids = (data.messages ?? []).map((m) => m.id).filter(Boolean);
+  const out: SentEmailRow[] = [];
+
+  for (const id of ids) {
+    const msg = await gmailFetch(
+      db,
+      userId,
+      `users/me/messages/${encodeURIComponent(id)}?format=full`,
+      { method: "GET" },
+      oauth,
+    );
+    if (!msg.ok) continue;
+    const m = msg.data as {
+      id?: string;
+      payload?: MimePart & { headers?: { name?: string; value?: string }[] };
+    };
+    const hm = headerMap(m.payload?.headers);
+    const from = (hm["from"] ?? "").toLowerCase();
+    if (!from.includes(me)) continue;
+
+    const to = firstToRecipient(hm["to"] ?? "");
+    const subject = hm["subject"] ?? "";
+    const date = hm["date"] ?? "";
+    const fullPlain = extractPlainBody(m.payload as MimePart).trim();
+    const char_count = fullPlain.length;
+    const plain = fullPlain.length > 2000 ? fullPlain.slice(0, 2000) : fullPlain;
+
+    out.push({
+      id: m.id ?? id,
+      to: to || "(unbekannt)",
+      subject,
+      body: plain,
+      date,
+      char_count,
+    });
+  }
+
+  return { success: true, data: out };
+}
+
+async function runAnalyzeSentStyle(
+  db: DatabaseClient,
+  userId: string,
+  oauth: { clientId: string; clientSecret: string },
+  limit: number,
+): Promise<ToolResult> {
+  return await runGetSentEmails(db, userId, oauth, limit);
+}
+
 export const gmailTool: Tool = {
   definition: {
     name: "gmail",
     description:
-      "Gmail: ungelesene Mails, Thread-Zusammenfassung, Entwurf (RFC2822-Rohinhalt intern), Label setzen.",
+      "Gmail: ungelesene Mails, Thread-Zusammenfassung, Entwurf (RFC2822-Rohinhalt intern), Label setzen, gesendete Mails laden / Rohdaten für Stil-Analyse.",
     input_schema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["list_unread", "summarize_thread", "create_draft", "flag_email"],
+          enum: [
+            "list_unread",
+            "summarize_thread",
+            "create_draft",
+            "flag_email",
+            "get_sent_emails",
+            "analyze_sent_style",
+          ],
         },
         thread_id: { type: "string" },
         max_results: { type: "number" },
+        limit: { type: "number" },
         message_id: { type: "string" },
         to: { type: "string" },
         subject: { type: "string" },
         body: { type: "string" },
+        in_reply_to: { type: "string" },
         label_ids: { type: "array", items: { type: "string" } },
       },
       required: ["action"],
@@ -419,6 +641,21 @@ export const gmailTool: Tool = {
             parsed.to,
             parsed.subject,
             parsed.body,
+            parsed.in_reply_to,
+          );
+        case "get_sent_emails":
+          return await runGetSentEmails(
+            db,
+            userId,
+            oauth,
+            parsed.limit ?? 50,
+          );
+        case "analyze_sent_style":
+          return await runAnalyzeSentStyle(
+            db,
+            userId,
+            oauth,
+            parsed.limit ?? 30,
           );
         case "flag_email": {
           const lids = parsed.label_ids?.length

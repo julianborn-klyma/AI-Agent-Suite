@@ -1,5 +1,6 @@
 import type { AppDependencies } from "../app_deps.ts";
 import type { DatabaseClient } from "../db/databaseClient.ts";
+import { LlmClientError } from "./llm/llmTypes.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,6 +82,15 @@ export async function postChat(
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Chat fehlgeschlagen.";
+    if (e instanceof LlmClientError) {
+      const s = e.status;
+      if (s === 529 || s === 503 || s === 502) {
+        return { ok: false, status: 503, error: msg };
+      }
+      if (s === 429) {
+        return { ok: false, status: 429, error: msg };
+      }
+    }
     return { ok: false, status: 500, error: msg };
   }
 }

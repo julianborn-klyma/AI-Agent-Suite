@@ -10,7 +10,18 @@ const NOTION_VERSION = "2022-06-28";
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly",
 ].join(" ");
+
+const SLACK_AUTH = "https://slack.com/oauth/v2/authorize";
+const SLACK_USER_SCOPES = [
+  "channels:history",
+  "groups:history",
+  "im:history",
+  "mpim:history",
+  "users:read",
+  "search:read",
+].join(",");
 
 export class OAuthService {
   constructor(
@@ -28,6 +39,62 @@ export class OAuthService {
     state: string,
   ): Promise<{ userId: string; provider: string } | null> {
     return await this.db.consumeOauthState(state);
+  }
+
+  buildSlackAuthUrl(state: string): string {
+    const p = new URLSearchParams({
+      client_id: this.env.slackClientId,
+      user_scope: SLACK_USER_SCOPES,
+      redirect_uri: this.env.slackRedirectUri,
+      state,
+    });
+    return `${SLACK_AUTH}?${p.toString()}`;
+  }
+
+  async exchangeSlackCode(code: string): Promise<{ userAccessToken: string }> {
+    const body = new URLSearchParams({
+      client_id: this.env.slackClientId,
+      client_secret: this.env.slackClientSecret,
+      code,
+      redirect_uri: this.env.slackRedirectUri,
+    });
+    const res = await fetch("https://slack.com/api/oauth.v2.access", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    const text = await res.text();
+    let j: Record<string, unknown> = {};
+    try {
+      j = text ? JSON.parse(text) as Record<string, unknown> : {};
+    } catch {
+      throw new Error(`Slack Token-Antwort ungültig: ${text.slice(0, 200)}`);
+    }
+    if (!res.ok || j.ok === false) {
+      throw new Error(
+        `Slack OAuth fehlgeschlagen: HTTP ${res.status} ${text.slice(0, 200)}`,
+      );
+    }
+    const au = j.authed_user as Record<string, unknown> | undefined;
+    const token = typeof au?.access_token === "string" ? au.access_token : "";
+    if (!token) {
+      throw new Error("Slack OAuth: kein User-Token (authed_user.access_token).");
+    }
+    return { userAccessToken: token };
+  }
+
+  async saveSlackUserToken(userId: string, userAccessToken: string): Promise<void> {
+    const enc = await encrypt(userAccessToken);
+    await this.db.upsertUserContext({
+      userId,
+      key: "slack_access_token",
+      value: enc,
+    });
+    await this.db.upsertUserContext({
+      userId,
+      key: "slack_connected",
+      value: "true",
+    });
   }
 
   buildGoogleAuthUrl(state: string): string {
@@ -172,20 +239,33 @@ export class OAuthService {
   async getConnectionStatus(userId: string): Promise<{
     google: boolean;
     notion: boolean;
+    slack: boolean;
     notionWorkspaceUser?: string;
+    drive_folder_id?: string;
+    notion_database_id?: string;
   }> {
     const rows = await this.db.listUserContexts(userId);
     const m = new Map(rows.map((r) => [r.key, r.value]));
     const google = m.get("google_connected") === "true";
     const notion = m.get("notion_connected") === "true";
+    const slack = m.get("slack_connected") === "true";
     const notionWorkspaceUser = m.get("notion_workspace_user")?.trim() ||
       undefined;
-    return { google, notion, notionWorkspaceUser };
+    const drive_folder_id = m.get("drive_folder_id")?.trim() || undefined;
+    const notion_database_id = m.get("notion_database_id")?.trim() || undefined;
+    return {
+      google,
+      notion,
+      slack,
+      notionWorkspaceUser,
+      drive_folder_id,
+      notion_database_id,
+    };
   }
 
   async disconnectProvider(
     userId: string,
-    provider: "google" | "notion",
+    provider: "google" | "notion" | "slack",
   ): Promise<void> {
     if (provider === "google") {
       await this.db.deleteUserContextsByKeys(userId, [
@@ -193,6 +273,13 @@ export class OAuthService {
         "gmail_refresh_token",
         "gmail_token_expires_at",
         "google_connected",
+      ]);
+      return;
+    }
+    if (provider === "slack") {
+      await this.db.deleteUserContextsByKeys(userId, [
+        "slack_access_token",
+        "slack_connected",
       ]);
       return;
     }

@@ -11,7 +11,11 @@ import { LlmClientError } from "./llmTypes.ts";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const TIMEOUT_MS = 60_000;
-const RETRY_529_MS = 2_000;
+/** Anthropic 529 = overload; 503/502 = gateway; 429 = rate limit — kurz warten und erneut versuchen. */
+const RETRYABLE_HTTP = new Set([529, 503, 502, 429]);
+const MAX_ANTHROPIC_ATTEMPTS = 6;
+const BASE_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 32_000;
 
 type AnthropicContentBlock =
   | { type: "text"; text: string }
@@ -34,6 +38,16 @@ type AnthropicApiMessage = {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Exponentielles Backoff mit kleinem Jitter (vermeidet Thundering Herd). */
+function backoffMsAfterFailure(attemptIndex: number): number {
+  const exp = Math.min(
+    MAX_BACKOFF_MS,
+    BASE_BACKOFF_MS * 2 ** Math.min(attemptIndex, 5),
+  );
+  const jitter = Math.floor(Math.random() * 400);
+  return exp + jitter;
 }
 
 function normalizeToolInput(input: unknown): Record<string, unknown> {
@@ -213,7 +227,7 @@ export class AnthropicClient implements LlmClient {
       body.tool_choice = { type: "auto" };
     }
 
-    const attempt = async (): Promise<Response> => {
+    const fetchOnce = async (): Promise<Response> => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
@@ -232,17 +246,25 @@ export class AnthropicClient implements LlmClient {
       }
     };
 
-    let res = await attempt();
-    if (res.status === 529) {
-      await sleep(RETRY_529_MS);
-      res = await attempt();
+    let res = await fetchOnce();
+    let retryIdx = 0;
+    while (!res.ok && RETRYABLE_HTTP.has(res.status) && retryIdx < MAX_ANTHROPIC_ATTEMPTS - 1) {
+      const wait = backoffMsAfterFailure(retryIdx);
+      await sleep(wait);
+      retryIdx++;
+      res = await fetchOnce();
     }
 
     const text = await res.text();
     if (!res.ok) {
+      const hint = res.status === 529
+        ? " (Anthropic meldet Überlast — bitte in ein paar Sekunden erneut versuchen.)"
+        : res.status === 429
+        ? " (Rate-Limit — kurz warten und erneut versuchen.)"
+        : "";
       throw new LlmClientError(
         res.status,
-        `Anthropic /v1/messages fehlgeschlagen: HTTP ${res.status}`,
+        `Anthropic /v1/messages fehlgeschlagen: HTTP ${res.status}${hint}`,
         text.slice(0, 500),
       );
     }

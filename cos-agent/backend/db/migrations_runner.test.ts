@@ -6,6 +6,9 @@ import { runMigrations } from "./migrate.ts";
 const EXPECTED_TABLES = [
   "agent_configs",
   "cos_conversations",
+  "cos_document_chunks",
+  "cos_documents",
+  "cos_learnings",
   "cos_llm_calls",
   "cos_oauth_states",
   "cos_schedules",
@@ -20,10 +23,13 @@ const EXPECTED_MIGRATION_FILES = [
   "003_agent_tools_enabled.sql",
   "004_default_agent_template.sql",
   "005_oauth_states.sql",
+  "006_learnings.sql",
+  "007_documents.sql",
+  "008_schedules_extended.sql",
 ] as const;
 
 Deno.test({
-  name: "Migration-Runner — 001–005, schema_migrations, Idempotenz",
+  name: "Migration-Runner — 001–008, schema_migrations, Idempotenz",
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {

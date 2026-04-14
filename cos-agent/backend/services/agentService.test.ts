@@ -1,5 +1,10 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { AgentConfigRow, DatabaseClient } from "../db/databaseClient.ts";
+import type {
+  AgentConfigRow,
+  DatabaseClient,
+  Learning,
+} from "../db/databaseClient.ts";
+import { documentTestStubs, scheduleTestStubs } from "../db/documentTestStubs.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "./llm/llmTypes.ts";
 import { AgentService } from "./agentService.ts";
 import { ToolExecutor } from "./tools/toolExecutor.ts";
@@ -109,6 +114,46 @@ class FakeDatabaseClient implements DatabaseClient {
   }
 
   async deleteUserContextsByKeys(_userId: string, _keys: string[]): Promise<void> {}
+
+  async getLearnings(): Promise<Learning[]> {
+    return [];
+  }
+
+  async upsertLearning(): Promise<Learning> {
+    throw new Error("not used in agentService tests");
+  }
+
+  async upsertLearnings(): Promise<Learning[]> {
+    return [];
+  }
+
+  async markLearningConflict(): Promise<void> {}
+
+  async confirmLearning(): Promise<void> {}
+
+  async deactivateLearning(): Promise<void> {}
+
+  async bulkConfirmLearningsByTimesConfirmed(): Promise<void> {}
+
+  insertDocument = documentTestStubs.insertDocument;
+  getDocuments = documentTestStubs.getDocuments;
+  getDocument = documentTestStubs.getDocument;
+  updateDocumentProcessed = documentTestStubs.updateDocumentProcessed;
+  deleteDocument = documentTestStubs.deleteDocument;
+  insertChunks = documentTestStubs.insertChunks;
+  searchChunks = documentTestStubs.searchChunks;
+  getChunks = documentTestStubs.getChunks;
+
+  getUserSchedules = scheduleTestStubs.getUserSchedules;
+  upsertJobSchedule = scheduleTestStubs.upsertJobSchedule;
+  toggleJobSchedule = scheduleTestStubs.toggleJobSchedule;
+  initDefaultSchedules = scheduleTestStubs.initDefaultSchedules;
+  listConversationMessagesForUserSince =
+    scheduleTestStubs.listConversationMessagesForUserSince;
+  purgeUserContextSummariesOlderThan =
+    scheduleTestStubs.purgeUserContextSummariesOlderThan;
+  purgeUserConversationsOlderThan = scheduleTestStubs.purgeUserConversationsOlderThan;
+  recordScheduleRun = scheduleTestStubs.recordScheduleRun;
 }
 
 const fixedNow = new Date("2026-04-07T07:15:00.000Z");
@@ -121,9 +166,7 @@ Deno.test("buildSystemPrompt — User ohne Kontext: {{USER_CONTEXT}} leer", asyn
   const svc = new AgentService(db, llm, new ToolExecutor(), {
     now: () => fixedNow,
   });
-  const prompt = await (svc as unknown as {
-    buildSystemPrompt(id: string): Promise<string>;
-  }).buildSystemPrompt("u1");
+  const prompt = await svc.buildSystemPrompt("u1");
 
   assertStringIncludes(prompt, "Vor [[");
   assertStringIncludes(prompt, "]] Nach");
@@ -147,9 +190,7 @@ Deno.test("buildSystemPrompt — drei Kontexte, sortiert als key: value", async 
   const svc = new AgentService(db, llm, new ToolExecutor(), {
     now: () => fixedNow,
   });
-  const prompt = await (svc as unknown as {
-    buildSystemPrompt(id: string): Promise<string>;
-  }).buildSystemPrompt("u2");
+  const prompt = await svc.buildSystemPrompt("u2");
 
   assertStringIncludes(prompt, "a_first: 1");
   assertStringIncludes(prompt, "m_mid: 2");
@@ -168,9 +209,7 @@ Deno.test("buildSystemPrompt — ohne {{USER_CONTEXT}} Placeholder: kein Fehler"
   const svc = new AgentService(db, llm, new ToolExecutor(), {
     now: () => fixedNow,
   });
-  const prompt = await (svc as unknown as {
-    buildSystemPrompt(id: string): Promise<string>;
-  }).buildSystemPrompt("u3");
+  const prompt = await svc.buildSystemPrompt("u3");
 
   assertEquals(prompt.includes("{{USER_CONTEXT}}"), false);
   assertEquals(prompt.includes("{{NOW}}"), false);

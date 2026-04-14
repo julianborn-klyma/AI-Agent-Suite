@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, Outlet } from "react-router-dom";
+import { AgentStructureInfoModal } from "./AgentStructureInfoModal.tsx";
 import { useAuth } from "../hooks/useAuth.ts";
 import { logout } from "../lib/auth.ts";
 
@@ -10,25 +12,16 @@ const navLinkStyle = ({
 }): CSSProperties => ({
   display: "block",
   padding: "0.5rem 0.75rem",
-  borderRadius: 6,
-  color: isActive ? "var(--accent)" : "var(--text)",
+  borderRadius: "var(--radius-sm)",
+  color: isActive ? "var(--accent-foreground)" : "var(--text)",
   fontWeight: isActive ? 600 : 400,
   textDecoration: "none",
-  background: isActive ? "rgba(37, 99, 235, 0.08)" : "transparent",
+  background: isActive ? "var(--accent-soft)" : "transparent",
 });
-
-const quickLinkStyle: CSSProperties = {
-  fontSize: "0.88rem",
-  fontWeight: 600,
-  padding: "0.35rem 0.65rem",
-  borderRadius: 6,
-  textDecoration: "none",
-};
 
 export function Layout() {
   const { user, isAdmin } = useAuth();
-  const location = useLocation();
-  const onSettings = location.pathname.startsWith("/settings");
+  const [agentInfoOpen, setAgentInfoOpen] = useState(false);
 
   return (
     <div
@@ -50,6 +43,7 @@ export function Layout() {
         }}
       >
         <div
+          className="co-font-display"
           style={{
             fontWeight: 700,
             fontSize: "1.05rem",
@@ -83,7 +77,16 @@ export function Layout() {
             Einstellungen
           </NavLink>
           <NavLink to="/settings/connections" style={navLinkStyle}>
-            Verbindungen (Google, Notion)
+            Verbindungen
+          </NavLink>
+          <NavLink to="/settings/schedules" style={navLinkStyle}>
+            Jobs &amp; Automation
+          </NavLink>
+          <NavLink to="/settings/learnings" style={navLinkStyle}>
+            Was weiß der Agent?
+          </NavLink>
+          <NavLink to="/settings/email-style" style={navLinkStyle}>
+            Mein Schreibstil
           </NavLink>
           <div
             style={{
@@ -99,6 +102,21 @@ export function Layout() {
           </div>
           <NavLink to="/chat" style={navLinkStyle} end>
             Chat
+          </NavLink>
+          <div
+            style={{
+              margin: "0.75rem 0 0.35rem",
+              padding: "0 0.75rem",
+              fontSize: "0.7rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              color: "var(--muted)",
+            }}
+          >
+            Dokumente
+          </div>
+          <NavLink to="/documents" style={navLinkStyle}>
+            Übersicht
           </NavLink>
           {isAdmin && (
             <>
@@ -165,53 +183,41 @@ export function Layout() {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
+          position: "relative",
         }}
       >
-        <div
+        <button
+          type="button"
+          data-testid="agent-structure-info-button"
+          aria-label="Info: Agenten-Struktur"
+          title="Agenten-Struktur"
+          onClick={() => setAgentInfoOpen(true)}
           style={{
-            flexShrink: 0,
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: "0.5rem 1rem",
-            marginBottom: "1rem",
-            padding: "0.65rem 0.85rem",
-            borderRadius: 8,
+            position: "absolute",
+            top: "0.85rem",
+            right: "0.85rem",
+            zIndex: 2,
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
             border: "1px solid var(--border)",
             background: "var(--surface)",
+            boxShadow: "var(--shadow-sm)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--muted)",
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            fontSize: "0.95rem",
+            lineHeight: 1,
           }}
         >
-          <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
-            Externe Dienste (Gmail, Drive, Notion):
-          </span>
-          <NavLink
-            to="/settings"
-            end
-            style={({ isActive }) => ({
-              ...quickLinkStyle,
-              color: "var(--accent)",
-              background: isActive ? "rgba(37, 99, 235, 0.12)" : "transparent",
-            })}
-          >
-            Einstellungen
-          </NavLink>
-          <NavLink
-            to="/settings/connections"
-            style={({ isActive }) => ({
-              ...quickLinkStyle,
-              color: "var(--accent)",
-              background: isActive ? "rgba(37, 99, 235, 0.12)" : "transparent",
-            })}
-          >
-            Verbindungen
-          </NavLink>
-          {onSettings && (
-            <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-              Du bist hier.
-            </span>
-          )}
-        </div>
-        <div style={{ flex: 1, minHeight: 0 }}>
+          i
+        </button>
+        <AgentStructureInfoModal open={agentInfoOpen} onClose={() => setAgentInfoOpen(false)} />
+        <div style={{ flex: 1, minHeight: 0, paddingRight: "2.75rem" }}>
           <Outlet />
         </div>
       </main>

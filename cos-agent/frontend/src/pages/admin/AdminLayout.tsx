@@ -7,8 +7,8 @@ export function AdminLayout() {
       <p className="co-admin-lead">
         Google- und Notion-Anbindung für dich selbst:{" "}
         <NavLink
-          to="/settings/connections"
-          style={{ fontWeight: 600, color: "var(--accent)" }}
+          to="/settings#verbindungen"
+          style={{ fontWeight: 600, color: "var(--link)" }}
         >
           Einstellungen → Verbindungen
         </NavLink>

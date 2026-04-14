@@ -1,22 +1,40 @@
+/**
+ * Design-Richtlinien wie Fahrzeugfluss (KLYMA): warme Neutrals, Primär Gold/Amber (HSL),
+ * DM Sans Fließtext, Syne Überschriften, JetBrains Mono Code — vgl. fahrzeug-fluss/frontend.
+ */
 :root {
-  --bg: #f1f2f4;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --text: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: rgba(79, 70, 229, 0.1);
-  --sidebar: #f8fafc;
-  --danger: #b91c1c;
-  --success: #15803d;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
-  --ring: 0 0 0 3px rgba(79, 70, 229, 0.25);
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Syne", var(--font-sans);
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --bg: hsl(40 15% 97%);
+  --surface: hsl(40 15% 99%);
+  --surface-2: hsl(40 12% 94%);
+  --text: hsl(20 10% 10%);
+  --muted: hsl(30 6% 46%);
+  --border: hsl(35 12% 88%);
+  --accent: hsl(45 100% 51%);
+  --accent-foreground: hsl(20 10% 10%);
+  --accent-hover: hsl(45 100% 44%);
+  --accent-soft: hsl(45 100% 51% / 0.12);
+  --accent-soft-strong: hsl(45 100% 51% / 0.18);
+  --sidebar: hsl(40 12% 95%);
+  --danger: hsl(0 72% 51%);
+  --danger-border: hsl(0 72% 51% / 0.32);
+  --success: hsl(152 60% 42%);
+  --success-border: hsl(152 50% 40% / 0.35);
+  --success-soft: hsl(152 60% 42% / 0.12);
+  --link: hsl(28 55% 36%);
+  --link-hover: hsl(28 55% 28%);
+
+  --radius-sm: calc(0.75rem - 4px);
+  --radius-md: calc(0.75rem - 2px);
+  --radius-lg: 0.75rem;
+
+  --shadow-sm: 0 1px 2px hsl(20 10% 10% / 0.06);
+  --shadow-md: 0 4px 16px hsl(20 10% 10% / 0.08);
+  --ring: 0 0 0 3px hsl(45 100% 51% / 0.28);
 }
 
 * {
@@ -31,19 +49,64 @@ body,
 }
 
 body {
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
+  font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+.co-font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Karten-/Panel-Überschriften (wie FF-Section-Titel) */
+.co-card-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* Inline-Banner (Erfolg / Fehler) */
+.co-banner {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+
+.co-banner--success {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: var(--success-border);
+}
+
+.co-banner--error {
+  background: hsl(0 72% 51% / 0.1);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+/* Verbundenen-Status (Google / Notion) */
+.co-connected-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.co-connected-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
 }
 
 /* —— Admin / Konfiguration —— */
@@ -53,6 +116,7 @@ body {
 
 .co-admin-h2 {
   margin: 0 0 0.35rem;
+  font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -108,12 +172,12 @@ body {
 
 .co-badge--accent {
   background: var(--accent-soft);
-  color: var(--accent);
-  border-color: transparent;
+  color: var(--accent-foreground);
+  border-color: hsl(45 60% 70% / 0.45);
 }
 
 .co-badge--success {
-  background: rgba(21, 128, 61, 0.1);
+  background: var(--success-soft);
   color: var(--success);
   border-color: transparent;
 }
@@ -152,7 +216,7 @@ body {
 .co-textarea {
   resize: vertical;
   min-height: 140px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   line-height: 1.45;
 }
@@ -187,8 +251,8 @@ body {
 
 .co-chip--on {
   background: var(--accent-soft);
-  border-color: rgba(79, 70, 229, 0.35);
-  color: var(--accent);
+  border-color: hsl(45 70% 55% / 0.45);
+  color: var(--accent-foreground);
 }
 
 .co-btn {
@@ -207,7 +271,7 @@ body {
 
 .co-btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-foreground);
 }
 
 .co-btn--primary:hover {
@@ -228,11 +292,11 @@ body {
 .co-btn--danger {
   background: transparent;
   color: var(--danger);
-  border: 1px solid rgba(185, 28, 28, 0.35);
+  border: 1px solid var(--danger-border);
 }
 
 .co-btn--danger:hover {
-  background: rgba(185, 28, 28, 0.06);
+  background: hsl(0 72% 51% / 0.08);
 }
 
 .co-status-line {
@@ -279,8 +343,8 @@ a.co-nav-pill:hover {
 
 a.co-nav-pill.active {
   background: var(--accent-soft);
-  color: var(--accent);
-  border-color: rgba(79, 70, 229, 0.2);
+  color: var(--accent-foreground);
+  border-color: hsl(45 70% 55% / 0.35);
 }
 
 .co-table-wrap {
@@ -374,11 +438,12 @@ a.co-nav-pill.active {
 }
 
 a {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
 }
 
 a:hover {
+  color: var(--link-hover);
   text-decoration: underline;
 }
 

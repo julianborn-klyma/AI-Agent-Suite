@@ -118,7 +118,7 @@ function ConfigEditor({ row }: { row: ConfigRow }) {
     <article className="co-card" data-testid={`config-editor-${row.id}`}>
       <div className="co-card-head">
         <div>
-          <div style={{ fontWeight: 700, fontSize: "1.05rem", letterSpacing: "-0.02em" }}>
+          <div className="co-card-title">
             {row.name}
             <span className="co-muted" style={{ fontWeight: 400, marginLeft: "0.35rem" }}>
               #{row.id}
