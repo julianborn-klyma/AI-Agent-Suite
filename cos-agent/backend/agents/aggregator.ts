@@ -1,6 +1,29 @@
 import type { LlmClient } from "../services/llm/llmTypes.ts";
 import { CHAT_MODEL } from "./constants.ts";
+import { MODEL_IDS } from "./modelSelector.ts";
 import type { AgentContext, SubAgentResult } from "./types.ts";
+
+function serializeResultPayload(results: SubAgentResult[]): string {
+  try {
+    return JSON.stringify(
+      results.map((r) => ({
+        agent: r.agentType,
+        ok: r.success,
+        data: r.data,
+        error: r.error,
+      })),
+    );
+  } catch {
+    return "";
+  }
+}
+
+/** Leer, alles fehlgeschlagen oder nur minimale Nutzlast — Haiku reicht oft. */
+function areToolResultsWeak(results: SubAgentResult[]): boolean {
+  if (results.length === 0) return true;
+  if (results.every((r) => !r.success)) return true;
+  return serializeResultPayload(results).length < 400;
+}
 
 export class AggregatorAgent {
   constructor(private llm: LlmClient) {}
@@ -9,6 +32,7 @@ export class AggregatorAgent {
     originalMessage: string;
     results: SubAgentResult[];
     context: AgentContext;
+    complexity?: "low" | "medium" | "high";
   }): Promise<string> {
     const name = params.context.userProfile?.name ?? "dem Nutzer";
     const styleHint =
@@ -23,8 +47,14 @@ export class AggregatorAgent {
       error: r.error,
     }));
 
+    const complexity = params.complexity ?? "medium";
+    const model =
+      complexity === "low" && areToolResultsWeak(params.results)
+        ? MODEL_IDS.haiku
+        : CHAT_MODEL;
+
     const res = await this.llm.chat({
-      model: CHAT_MODEL,
+      model,
       system:
         `Du bist der persönliche Chief of Staff für ${name}. Stil: ${styleHint}. ` +
         "Fasse die folgenden Tool-/Sub-Agent-Ergebnisse zu einer kohärenten Antwort auf die Nutzerfrage zusammen. " +

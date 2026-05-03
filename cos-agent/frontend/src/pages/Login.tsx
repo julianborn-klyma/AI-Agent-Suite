@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { ApiError } from "../lib/api.ts";
+import { API_URL, ApiError } from "../lib/api.ts";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { login, setToken } from "../lib/auth.ts";
 
@@ -13,11 +13,6 @@ const LOGIN_ERRORS: Record<string, string> = {
   google_login_failed: "Google-Anmeldung fehlgeschlagen.",
 };
 
-function apiOrigin(): string {
-  const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? "";
-  return raw.replace(/\/+$/, "");
-}
-
 export function LoginPage() {
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -27,7 +22,8 @@ export function LoginPage() {
   const [pending, setPending] = useState(false);
   const [retryRemaining, setRetryRemaining] = useState<number | null>(null);
 
-  const googleLoginHref = `${apiOrigin()}/api/auth/google/login`;
+  /** Gleiche Basis wie `apiFetch` (Dev: leer → `/api…` über Proxy; Prod: `VITE_API_URL` oder Fallback). */
+  const googleLoginHref = `${API_URL}/api/auth/google/login`;
 
   useEffect(() => {
     const err = searchParams.get("error");

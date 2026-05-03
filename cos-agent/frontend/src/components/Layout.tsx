@@ -16,8 +16,8 @@ const navLinkStyle = ({
   display: "block",
   padding: "0.5rem 0.75rem",
   borderRadius: "var(--radius-sm)",
-  color: isActive ? "var(--accent-foreground)" : "var(--text)",
-  fontWeight: isActive ? 600 : 400,
+  color: isActive ? "var(--ink)" : "var(--text)",
+  fontWeight: isActive ? 600 : 500,
   textDecoration: "none",
   background: isActive ? "var(--accent-soft)" : "transparent",
 });
@@ -61,7 +61,6 @@ export function Layout() {
         <div
           className="co-font-display"
           style={{
-            fontWeight: 700,
             fontSize: "1.05rem",
             padding: "0 0.75rem 1rem",
             borderBottom: "1px solid var(--border)",
@@ -125,6 +124,12 @@ export function Layout() {
           <NavLink to="/tasks" style={navLinkStyle}>
             Task-Queue
             {pendingBadge > 0 ? ` (${pendingBadge})` : ""}
+          </NavLink>
+          <NavLink to="/workspace" style={navLinkStyle}>
+            Arbeit (Tasks)
+          </NavLink>
+          <NavLink to="/workspace/wiki" style={navLinkStyle}>
+            Wiki
           </NavLink>
           <div
             style={{
@@ -224,7 +229,7 @@ export function Layout() {
         style={{
           flex: 1,
           overflow: "auto",
-          padding: "1.25rem",
+          padding: "var(--layout-main-padding)",
           maxWidth: "100%",
           display: "flex",
           flexDirection: "column",

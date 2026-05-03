@@ -57,7 +57,10 @@ try {
   const hash = await new PasswordService().hashPassword(E2E_PASSWORD);
   await sql`
     UPDATE cos_users
-    SET password_hash = ${hash}
+    SET
+      password_hash = ${hash},
+      onboarding_completed = true,
+      onboarding_completed_at = COALESCE(onboarding_completed_at, NOW())
     WHERE email IN (${ADMIN_EMAIL}, ${USER_EMAIL}, ${SUPERADMIN_EMAIL})
   `;
   console.log(

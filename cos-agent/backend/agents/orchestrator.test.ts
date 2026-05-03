@@ -9,6 +9,8 @@ import { testAuthDbStubMethods } from "../db/databaseClientTestAuthStubs.ts";
 import { documentTestStubs, scheduleTestStubs } from "../db/documentTestStubs.ts";
 import { taskQueueTestStubs } from "../db/taskQueueTestStubs.ts";
 import { DocumentService } from "../services/documentService.ts";
+import { CHAT_MODEL } from "./constants.ts";
+import { MODEL_IDS } from "./modelSelector.ts";
 import type { LlmClient, LlmRequest, LlmResponse } from "../services/llm/llmTypes.ts";
 import { LearningService } from "../services/learningService.ts";
 import { ToolExecutor } from "../services/tools/toolExecutor.ts";
@@ -53,6 +55,15 @@ class QueuedFakeLlm implements LlmClient {
       output_tokens: 0,
       stop_reason: "end_turn",
     };
+  }
+}
+
+class ModelTrackingLlm implements LlmClient {
+  readonly models: string[] = [];
+  constructor(private readonly inner: LlmClient) {}
+  async chat(req: LlmRequest): Promise<LlmResponse> {
+    this.models.push(req.model);
+    return await this.inner.chat(req);
   }
 }
 
@@ -429,6 +440,238 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "Orchestrator — Intent: Wiki-Keyword → workspace (wiki), ohne LLM",
+  async () => {
+    const db = new MultiConfigDb({
+      u1: {
+        system_prompt: "S {{USER_CONTEXT}} {{NOW}}",
+        tools_enabled: ["notion"],
+      },
+    });
+    const inner = new QueuedFakeLlm([]);
+    const llm = new ModelTrackingLlm(inner);
+    const lp = learningPair(db);
+    const orch = new OrchestratorAgent(
+      llm,
+      db,
+      new ToolExecutor(),
+      new ValidatorAgent(llm),
+      new AggregatorAgent(llm),
+      undefined,
+      lp.learningService,
+      lp.learningLlm,
+      new DocumentService(db, llm),
+    );
+    const ctx = await (
+      orch as unknown as {
+        loadContext(
+          uid: string,
+          hist: unknown[],
+          now: () => Date,
+        ): Promise<AgentContext>;
+      }
+    ).loadContext("u1", [], () => new Date("2026-04-07T12:00:00Z"));
+    const plan = await orch.analyzeIntent("Was steht im Tenant-Wiki?", ctx);
+    assertEquals(llm.models.length, 0);
+    assertEquals(plan.steps.length, 1);
+    assertEquals(plan.steps[0]!.agent, "workspace");
+    assertEquals(plan.steps[0]!.task, {
+      realm: "wiki",
+      action: "list_approved",
+      limit: 20,
+    });
+  },
+);
+
+Deno.test(
+  "Orchestrator — Intent: interne Work-Tasks → workspace (tasks), ohne LLM",
+  async () => {
+    const db = new MultiConfigDb({
+      u1: {
+        system_prompt: "S {{USER_CONTEXT}} {{NOW}}",
+        tools_enabled: ["gmail"],
+      },
+    });
+    const inner = new QueuedFakeLlm([]);
+    const llm = new ModelTrackingLlm(inner);
+    const lp = learningPair(db);
+    const orch = new OrchestratorAgent(
+      llm,
+      db,
+      new ToolExecutor(),
+      new ValidatorAgent(llm),
+      new AggregatorAgent(llm),
+      undefined,
+      lp.learningService,
+      lp.learningLlm,
+      new DocumentService(db, llm),
+    );
+    const ctx = await (
+      orch as unknown as {
+        loadContext(
+          uid: string,
+          hist: unknown[],
+          now: () => Date,
+        ): Promise<AgentContext>;
+      }
+    ).loadContext("u1", [], () => new Date("2026-04-07T12:00:00Z"));
+    const plan = await orch.analyzeIntent("Liste interne Work-Tasks", ctx);
+    assertEquals(llm.models.length, 0);
+    assertEquals(plan.steps.length, 1);
+    assertEquals(plan.steps[0]!.agent, "workspace");
+    assertEquals(plan.steps[0]!.task, {
+      realm: "tasks",
+      action: "list_not_done",
+      limit: 25,
+    });
+  },
+);
+
+Deno.test(
+  "Orchestrator — Trivialnachricht: nur Haiku, kein Sonnet-Aggregate",
+  async () => {
+    const db = new MultiConfigDb({
+      u1: {
+        system_prompt: "S {{USER_CONTEXT}} {{NOW}}",
+        tools_enabled: ["notion", "gmail"],
+      },
+    });
+    const queue = new QueuedFakeLlm([
+      {
+        content: "Hallo! Schön, dass du da bist.",
+        input_tokens: 1,
+        output_tokens: 8,
+        stop_reason: "end_turn",
+      },
+    ]);
+    const llm = new ModelTrackingLlm(queue);
+    const lp = learningPair(db);
+    const orch = new OrchestratorAgent(
+      llm,
+      db,
+      new RecordingToolExecutor(),
+      new ValidatorAgent(llm),
+      new AggregatorAgent(llm),
+      undefined,
+      lp.learningService,
+      lp.learningLlm,
+      new DocumentService(db, llm),
+    );
+    const out = await orch.run({
+      userId: "u1",
+      sessionId: crypto.randomUUID(),
+      message: "Hi",
+      historyMessages: [],
+    });
+    assertEquals(queue.invocationCount, 1);
+    assertEquals(llm.models.length, 1);
+    assertEquals(llm.models[0], MODEL_IDS.haiku);
+    assertEquals(llm.models.some((m) => m === CHAT_MODEL), false);
+    assertEquals(out.path, "fast_direct");
+    assertEquals(out.tool_calls_made.length, 0);
+    assertExists(out.content);
+  },
+);
+
+Deno.test(
+  "Orchestrator — Intent mit steps=[]: Direktantwort ohne Sonnet-Aggregate",
+  async () => {
+    const db = new MultiConfigDb({
+      u1: {
+        system_prompt: "S {{USER_CONTEXT}} {{NOW}}",
+        tools_enabled: ["notion"],
+      },
+    });
+    const inner = new QueuedFakeLlm([
+      {
+        content: JSON.stringify({ steps: [], reasoning: "nur Chat" }),
+        input_tokens: 1,
+        output_tokens: 1,
+        stop_reason: "end_turn",
+      },
+      {
+        content: "Alles klar, wie kann ich helfen?",
+        input_tokens: 1,
+        output_tokens: 1,
+        stop_reason: "end_turn",
+      },
+    ]);
+    const llm = new ModelTrackingLlm(inner);
+    const lp = learningPair(db);
+    const orch = new OrchestratorAgent(
+      llm,
+      db,
+      new RecordingToolExecutor(),
+      new ValidatorAgent(llm),
+      new AggregatorAgent(llm),
+      undefined,
+      lp.learningService,
+      lp.learningLlm,
+      new DocumentService(db, llm),
+    );
+    const out = await orch.run({
+      userId: "u1",
+      sessionId: crypto.randomUUID(),
+      message: "Nur eine kurze Metafrage ohne Daten aus Tools bitte",
+      historyMessages: [],
+    });
+    assertEquals(inner.invocationCount, 2);
+    assertEquals(out.path, "fast_empty_plan");
+    assertEquals(llm.models.some((m) => m === CHAT_MODEL), false);
+    assertEquals(llm.models.every((m) => m === MODEL_IDS.haiku), true);
+    assertEquals(out.tool_calls_made.length, 0);
+  },
+);
+
+Deno.test("Aggregator — low + schwache Ergebnisse: Haiku statt Sonnet", async () => {
+  const inner = new QueuedFakeLlm([
+    { content: "kurz", input_tokens: 1, output_tokens: 1, stop_reason: "end_turn" },
+  ]);
+  const spy = new ModelTrackingLlm(inner);
+  const agg = new AggregatorAgent(spy);
+  const ctx: AgentContext = {
+    userId: "u1",
+    systemPrompt: "s",
+    userContexts: [],
+    userProfile: { id: "u1", name: "N", email: "n@n", role: "member" },
+    learnings: [],
+    connectedTools: ["notion"],
+    recentHistory: [],
+  };
+  await agg.aggregate({
+    originalMessage: "was geht",
+    results: [{ agentType: "notion", success: false, error: "x" }],
+    context: ctx,
+    complexity: "low",
+  });
+  assertEquals(spy.models[0], MODEL_IDS.haiku);
+});
+
+Deno.test("Aggregator — high: Sonnet auch bei leeren Ergebnissen", async () => {
+  const inner = new QueuedFakeLlm([
+    { content: "x", input_tokens: 1, output_tokens: 1, stop_reason: "end_turn" },
+  ]);
+  const spy = new ModelTrackingLlm(inner);
+  const agg = new AggregatorAgent(spy);
+  const ctx: AgentContext = {
+    userId: "u1",
+    systemPrompt: "s",
+    userContexts: [],
+    userProfile: { id: "u1", name: "N", email: "n@n", role: "member" },
+    learnings: [],
+    connectedTools: ["notion"],
+    recentHistory: [],
+  };
+  await agg.aggregate({
+    originalMessage: "Bitte analysiere den Businessplan",
+    results: [],
+    context: ctx,
+    complexity: "high",
+  });
+  assertEquals(spy.models[0], CHAT_MODEL);
+});
+
 class RetryTwiceValidator extends ValidatorAgent {
   constructor(llm: LlmClient, private readonly state: { n: number }) {
     super(llm);
@@ -493,7 +736,7 @@ Deno.test(
     const out = await orch.run({
       userId: "u1",
       sessionId: crypto.randomUUID(),
-      message: "Hi",
+      message: "Zeige mir bitte meine Notion-Aufgaben für heute",
       historyMessages: [],
     });
     assertEquals(calls.n, 2);
@@ -547,7 +790,7 @@ Deno.test(
     await orch.run({
       userId: "u1",
       sessionId: crypto.randomUUID(),
-      message: "Hi",
+      message: "Bitte fasse meine Notion-Tasks zusammen und prüfe auf Widersprüche",
       historyMessages: [],
     });
     assertEquals(llm.invocationCount <= 12, true);

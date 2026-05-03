@@ -25,7 +25,7 @@ registerCronJobs(env);
 const sql = postgres(env.databaseUrl, { max: 10 });
 const db = createPostgresDatabaseClient(sql);
 const llm = new AnthropicClient(env.anthropicApiKey);
-const toolExecutor = new ToolExecutor();
+const toolExecutor = new ToolExecutor(sql);
 const documentService = new DocumentService(db, llm);
 const agentService = new AgentService(db, llm, toolExecutor, {
   documentService,

@@ -29,6 +29,8 @@ export function ChatPage() {
     currentSessionId,
     messages,
     isLoading,
+    isBusy,
+    phaseLabel,
     isSendError,
     sendErrorDetail,
     sendMessage,
@@ -102,9 +104,9 @@ export function ChatPage() {
 
   async function handleSend() {
     const t = input.trim();
-    if (!t || isLoading) return;
+    if (!t || isBusy) return;
     setInput("");
-    await sendMessage(t);
+    await sendMessage(t, { complexityHigh });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -369,7 +371,7 @@ export function ChatPage() {
                   <button
                     key={s}
                     type="button"
-                    disabled={isLoading}
+                    disabled={isBusy}
                     onClick={() => void sendMessage(s)}
                     style={{
                       padding: "0.55rem 0.75rem",
@@ -427,11 +429,24 @@ export function ChatPage() {
                         color: "var(--text)",
                       }}
                     >
-                      <div className="chat-md">
-                        <ReactMarkdown>{m.content}</ReactMarkdown>
-                      </div>
+                      {m.isStreaming ? (
+                        <div
+                          style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                          data-testid="chat-assistant-streaming"
+                        >
+                          {m.content}
+                          <span className="chat-stream-caret" aria-hidden>
+                            |
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="chat-md">
+                          <ReactMarkdown>{m.content}</ReactMarkdown>
+                        </div>
+                      )}
                       {m.tool_calls_made && m.tool_calls_made.length > 0 && (
                         <div
+                          data-testid="chat-tool-pills"
                           style={{
                             display: "flex",
                             flexWrap: "wrap",
@@ -442,6 +457,7 @@ export function ChatPage() {
                           {m.tool_calls_made.map((t) => (
                             <span
                               key={t}
+                              data-testid={`chat-tool-pill-${t}`}
                               style={{
                                 fontSize: "0.72rem",
                                 padding: "0.15rem 0.45rem",
@@ -471,12 +487,12 @@ export function ChatPage() {
               padding: "0 1rem 0.35rem",
               display: "flex",
               alignItems: "center",
-              gap: 6,
+              minHeight: 20,
             }}
+            className="chat-phase-label"
+            data-testid="chat-phase-label"
           >
-            <span className="chat-loading-dot" />
-            <span className="chat-loading-dot" />
-            <span className="chat-loading-dot" />
+            {phaseLabel || "Am Nachdenken …"}
           </div>
         )}
 
@@ -514,12 +530,13 @@ export function ChatPage() {
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
             <textarea
               ref={textareaRef}
+              data-testid="chat-input"
               rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder="Nachricht… (Enter senden, Shift+Enter Zeilenumbruch)"
-              disabled={isLoading}
+              disabled={isBusy}
               style={{
                 flex: 1,
                 minHeight: 40,
@@ -538,31 +555,32 @@ export function ChatPage() {
                 setPePanelKey((k) => k + 1);
                 setPromptModalOpen(true);
               }}
-              disabled={isLoading}
+              disabled={isBusy}
               style={{
                 padding: "0.55rem 0.65rem",
                 border: "1px solid var(--border)",
                 borderRadius: 8,
                 background: "var(--surface)",
                 alignSelf: "flex-end",
-                cursor: isLoading ? "not-allowed" : "pointer",
+                cursor: isBusy ? "not-allowed" : "pointer",
                 fontSize: "1rem",
               }}
             >
               ✨
             </button>
             <button
+              data-testid="chat-send"
               type="button"
-              disabled={isLoading || !input.trim()}
+              disabled={isBusy || !input.trim()}
               onClick={() => void handleSend()}
               style={{
                 padding: "0.55rem 1rem",
                 border: "none",
                 borderRadius: 8,
                 background:
-                  isLoading || !input.trim() ? "var(--muted)" : "var(--accent)",
+                  isBusy || !input.trim() ? "var(--muted)" : "var(--accent)",
                 color:
-                  isLoading || !input.trim()
+                  isBusy || !input.trim()
                     ? "var(--surface)"
                     : "var(--accent-foreground)",
                 fontWeight: 600,

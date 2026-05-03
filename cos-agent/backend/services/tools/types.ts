@@ -1,4 +1,10 @@
+import type postgres from "postgres";
 import type { DatabaseClient } from "../../db/databaseClient.ts";
+
+/** Optionaler Laufzeitkontext (z. B. Postgres für Tenant-RLS-Tools). */
+export type ToolExecuteContext = {
+  sql?: postgres.Sql;
+};
 
 export interface ToolResult {
   success: boolean;
@@ -28,5 +34,6 @@ export interface Tool {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    ctx?: ToolExecuteContext,
   ): Promise<ToolResult>;
 }

@@ -71,6 +71,26 @@ Deno.test("PromptEngineerService — classifyComplexity kurze Liste-Frage → lo
   assertEquals(svc.classifyComplexity("zeig meine tasks"), "low");
 });
 
+Deno.test("PromptEngineerService — classifyComplexity Grüße → low", () => {
+  const svc = new PromptEngineerService(
+    { async chat(): Promise<LlmResponse> {
+      throw new Error("no");
+    } } as LlmClient,
+  );
+  assertEquals(svc.classifyComplexity("Hi"), "low");
+  assertEquals(svc.classifyComplexity("Danke!"), "low");
+});
+
+Deno.test("PromptEngineerService — isTrivialSmalltalkMessage streng", () => {
+  const svc = new PromptEngineerService(
+    { async chat(): Promise<LlmResponse> {
+      throw new Error("no");
+    } } as LlmClient,
+  );
+  assertEquals(svc.isTrivialSmalltalkMessage("Hi"), true);
+  assertEquals(svc.isTrivialSmalltalkMessage("Was läuft?"), false);
+});
+
 Deno.test("PromptEngineerService — optimizeResearchPrompt → recommended_model sonnet", async () => {
   const llm = new QueuedLlm([
     {

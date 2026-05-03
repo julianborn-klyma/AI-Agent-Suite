@@ -608,6 +608,7 @@ export const gmailTool: Tool = {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    _ctx?: unknown,
   ): Promise<ToolResult> {
     let oauth: { clientId: string; clientSecret: string };
     try {

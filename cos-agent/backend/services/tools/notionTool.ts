@@ -275,6 +275,7 @@ export const notionTool: Tool = {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    _ctx?: unknown,
   ): Promise<ToolResult> {
     const token = await getCredential(db, userId, "notion_token");
     if (!token) {

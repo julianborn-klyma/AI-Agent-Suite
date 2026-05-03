@@ -105,7 +105,7 @@ export async function loadAgentContext(
   const baseTools = config.tools_enabled?.length
     ? config.tools_enabled
     : ["notion"];
-  const connectedTools = [...new Set([...baseTools, "web_search"])];
+  const connectedTools = [...new Set([...baseTools, "web_search", "workspace"])];
 
   const profile = await db.findUserProfileById(userId);
 

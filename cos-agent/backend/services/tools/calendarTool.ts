@@ -365,6 +365,7 @@ export const calendarTool: Tool = {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    _ctx?: unknown,
   ): Promise<ToolResult> {
     const gate = await assertGoogleCalendar(db, userId);
     if (gate) return gate;

@@ -98,6 +98,7 @@ import {
   handleTasksList,
   handleTasksPost,
 } from "./routes/tasks.ts";
+import { dispatchWorkspace } from "./routes/workspace.ts";
 import { dispatchSuperAdmin } from "./routes/superadmin/tenants.ts";
 
 function withCors(req: Request, env: AppEnv, res: Response): Response {
@@ -371,6 +372,12 @@ export function createRequestHandler(
         res = missingDepsResponse();
       } else {
         res = await handleDocumentsList(req, env, deps);
+      }
+    } else if (url.pathname.startsWith("/api/workspace/")) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await dispatchWorkspace(req, env, deps, url.pathname);
       }
     } else if (url.pathname === "/api/tasks" && req.method === "POST") {
       if (!deps) {

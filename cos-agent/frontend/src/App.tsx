@@ -24,6 +24,10 @@ import { SettingsSchedulesPage } from "./pages/settings/Schedules.tsx";
 import { SettingsPage } from "./pages/settings/SettingsPage.tsx";
 import { TaskDetailPage } from "./pages/tasks/TaskDetail.tsx";
 import { TaskListPage } from "./pages/tasks/TaskList.tsx";
+import { WorkspacePage } from "./pages/workspace/WorkspacePage.tsx";
+import { WorkspaceWikiPage } from "./pages/workspace/WorkspaceWikiPage.tsx";
+import { WorkspaceWikiReadPage } from "./pages/workspace/WorkspaceWikiReadPage.tsx";
+import { WorkspaceWorkTaskDetailPage } from "./pages/workspace/WorkspaceWorkTaskDetailPage.tsx";
 import { AuditLogPage } from "./pages/superadmin/AuditLogPage.tsx";
 import { SuperAdminLayout } from "./pages/superadmin/SuperAdminLayout.tsx";
 import { SystemStatusPage } from "./pages/superadmin/SystemStatusPage.tsx";
@@ -53,6 +57,10 @@ export function App() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="tasks" element={<TaskListPage />} />
           <Route path="tasks/:id" element={<TaskDetailPage />} />
+          <Route path="workspace/work-tasks/:id" element={<WorkspaceWorkTaskDetailPage />} />
+          <Route path="workspace" element={<WorkspacePage />} />
+          <Route path="workspace/wiki/:slug" element={<WorkspaceWikiReadPage />} />
+          <Route path="workspace/wiki" element={<WorkspaceWikiPage />} />
           <Route path="documents" element={<DocumentListPage />} />
           <Route path="documents/:id" element={<DocumentDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />

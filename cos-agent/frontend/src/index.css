@@ -1,40 +1,54 @@
 /**
- * Design-Richtlinien wie Fahrzeugfluss (KLYMA): warme Neutrals, Primär Gold/Amber (HSL),
- * DM Sans Fließtext, Syne Überschriften, JetBrains Mono Code — vgl. fahrzeug-fluss/frontend.
+ * Layout/Typo/Radii orientiert an Aware; Akzentfarbe: Klyma Gelb (Amber).
+ * Schrift: DM Sans (OFL). Code: JetBrains Mono.
  */
 :root {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Syne", var(--font-sans);
+  --font-display: var(--font-sans);
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --bg: hsl(40 15% 97%);
-  --surface: hsl(40 15% 99%);
-  --surface-2: hsl(40 12% 94%);
-  --text: hsl(20 10% 10%);
-  --muted: hsl(30 6% 46%);
-  --border: hsl(35 12% 88%);
+  /* Neutrals / Flächen (Aware-nah); Primärakzent = Klyma Gelb */
+  --ink: #08031b;
+  --neutrals-200: #c9c9cb;
+  --neutrals-500: #78777e;
+  --bg-canvas: #f9f7f6;
+  --bg-muted: #f3f0ed;
+  /* Sidebar: sehr helles Gelb/Ocker (warm, kaum gesättigt) */
+  --bg-sidebar: hsl(46 52% 96%);
+  --off-white: #fefdf9;
+  --surface-white: #ffffff;
+  --border-tint: #e6e4f0;
+
+  --bg: var(--bg-canvas);
+  --surface: var(--surface-white);
+  --surface-2: var(--bg-muted);
+  --text: #000000;
+  --muted: var(--neutrals-500);
+  --border: var(--border-tint);
   --accent: hsl(45 100% 51%);
   --accent-foreground: hsl(20 10% 10%);
   --accent-hover: hsl(45 100% 44%);
   --accent-soft: hsl(45 100% 51% / 0.12);
   --accent-soft-strong: hsl(45 100% 51% / 0.18);
-  --sidebar: hsl(40 12% 95%);
-  --danger: hsl(0 72% 51%);
-  --danger-border: hsl(0 72% 51% / 0.32);
-  --success: hsl(152 60% 42%);
-  --success-border: hsl(152 50% 40% / 0.35);
-  --success-soft: hsl(152 60% 42% / 0.12);
+  --sidebar: var(--bg-sidebar);
+  --danger: #ff4545;
+  --danger-border: rgb(255 69 69 / 0.35);
+  --success: #0d8a5b;
+  --success-border: rgb(13 138 91 / 0.35);
+  --success-soft: rgb(13 138 91 / 0.1);
   --link: hsl(28 55% 36%);
   --link-hover: hsl(28 55% 28%);
 
-  --radius-sm: calc(0.75rem - 4px);
-  --radius-md: calc(0.75rem - 2px);
-  --radius-lg: 0.75rem;
+  --radius-sm: 0.875rem;
+  --radius-md: 1.25rem;
+  --radius-lg: 1.25rem;
 
-  --shadow-sm: 0 1px 2px hsl(20 10% 10% / 0.06);
-  --shadow-md: 0 4px 16px hsl(20 10% 10% / 0.08);
+  --shadow-sm: 0 1px 2px rgb(8 3 27 / 0.06);
+  --shadow-md: 0 4px 20px rgb(8 3 27 / 0.08);
   --ring: 0 0 0 3px hsl(45 100% 51% / 0.28);
+  --outline-offset: 0.125rem;
+  --layout-main-padding: 1.25rem;
 }
 
 * {
@@ -52,13 +66,18 @@ body {
   font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
-  line-height: 1.55;
+  font-weight: 500;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .co-font-display {
   font-family: var(--font-display);
+  font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
 /* Karten-/Panel-Überschriften (wie FF-Section-Titel) */
@@ -67,7 +86,7 @@ body {
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: -0.02em;
-  color: var(--text);
+  color: var(--ink);
 }
 
 /* Inline-Banner (Erfolg / Fehler) */
@@ -120,7 +139,7 @@ body {
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--text);
+  color: var(--ink);
 }
 
 .co-admin-lead {
@@ -143,7 +162,7 @@ body {
 
 .co-card:hover {
   box-shadow: var(--shadow-md);
-  border-color: #cbd5e1;
+  border-color: var(--neutrals-200);
 }
 
 .co-card-head {
@@ -172,7 +191,7 @@ body {
 
 .co-badge--accent {
   background: var(--accent-soft);
-  color: var(--accent-foreground);
+  color: var(--ink);
   border-color: hsl(45 60% 70% / 0.45);
 }
 
@@ -245,14 +264,14 @@ body {
 }
 
 .co-chip:hover {
-  border-color: #cbd5e1;
+  border-color: var(--neutrals-200);
   color: var(--text);
 }
 
 .co-chip--on {
   background: var(--accent-soft);
   border-color: hsl(45 70% 55% / 0.45);
-  color: var(--accent-foreground);
+  color: var(--ink);
 }
 
 .co-btn {
@@ -343,7 +362,7 @@ a.co-nav-pill:hover {
 
 a.co-nav-pill.active {
   background: var(--accent-soft);
-  color: var(--accent-foreground);
+  color: var(--ink);
   border-color: hsl(45 70% 55% / 0.35);
 }
 
@@ -405,7 +424,7 @@ a.co-nav-pill.active {
 .co-user-card:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
-  border-color: #cbd5e1;
+  border-color: var(--neutrals-200);
 }
 
 .co-user-card-name {
@@ -460,35 +479,26 @@ code {
   font-size: 0.9em;
 }
 
-@keyframes chat-loading-dot {
+@keyframes chat-caret-blink {
   0%,
-  80%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  40% {
+  49% {
     opacity: 1;
-    transform: translateY(-2px);
+  }
+  50%,
+  100% {
+    opacity: 0;
   }
 }
 
-.chat-loading-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin: 0 2px;
-  border-radius: 50%;
-  background: var(--muted);
-  animation: chat-loading-dot 1.2s ease-in-out infinite;
+.chat-phase-label {
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
-.chat-loading-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.chat-loading-dot:nth-child(3) {
-  animation-delay: 0.4s;
+.chat-stream-caret {
+  margin-left: 1px;
+  color: var(--muted);
+  animation: chat-caret-blink 0.9s step-end infinite;
 }
 
 .chat-md p {
@@ -528,4 +538,11 @@ code {
   padding-left: 0.65rem;
   border-left: 3px solid var(--border);
   color: var(--muted);
+}
+
+.wiki-md-preview h1,
+.wiki-md-preview h2,
+.wiki-md-preview h3 {
+  font-size: 1rem;
+  margin: 0.5rem 0 0.35rem;
 }

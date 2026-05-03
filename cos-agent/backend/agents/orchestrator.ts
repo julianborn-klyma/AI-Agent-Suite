@@ -23,6 +23,7 @@ import type { AggregatorAgent } from "./aggregator.ts";
 import type { LearningService } from "../services/learningService.ts";
 import { LearningAgent } from "./subagents/learningAgent.ts";
 import { WebSearchAgent } from "./subagents/webSearchAgent.ts";
+import { WorkspaceAgent } from "./subagents/workspaceAgent.ts";
 import type { ValidatorAgent } from "./validator.ts";
 import { PromptEngineerService } from "../services/promptEngineerService.ts";
 
@@ -50,6 +51,32 @@ function cfoKeywordPlan(message: string, context: AgentContext): AgentPlan | nul
   };
 }
 
+const WIKI_CONTEXT_RE =
+  /wiki|wikiseite|tenant-wiki|interne(s)?\s+wiki|knowledge\s+base/i;
+const WORK_TASK_CONTEXT_RE =
+  /interne(s)?\s+(work-?)?tasks?|app\.tasks|workspace-tasks|offene\s+projektaufgaben/i;
+
+function workspaceKeywordPlan(message: string, context: AgentContext): AgentPlan | null {
+  if (!context.connectedTools.includes("workspace")) return null;
+  if (WIKI_CONTEXT_RE.test(message)) {
+    return {
+      steps: [{
+        agent: "workspace",
+        task: { realm: "wiki", action: "list_approved", limit: 20 },
+      }],
+    };
+  }
+  if (WORK_TASK_CONTEXT_RE.test(message)) {
+    return {
+      steps: [{
+        agent: "workspace",
+        task: { realm: "tasks", action: "list_not_done", limit: 25 },
+      }],
+    };
+  }
+  return null;
+}
+
 export class OrchestratorAgent {
   protected agents: Map<string, BaseSubAgent>;
   private readonly learningAgent: LearningAgent;
@@ -75,6 +102,7 @@ export class OrchestratorAgent {
       ["calendar", new CalendarAgent(llm, db, toolExecutor)],
       ["cfo", new CfoAgent(llm, db, toolExecutor, documentService)],
       ["web_search", new WebSearchAgent(llm, db, toolExecutor)],
+      ["workspace", new WorkspaceAgent(llm, db, toolExecutor)],
     ]);
     this.learningAgent = new LearningAgent(
       learningLlm,
@@ -99,6 +127,7 @@ export class OrchestratorAgent {
 
     const tool_calls_made: string[] = [];
     let lastContent = "";
+    let path: OrchestratorResult["path"] = "orchestrated";
 
     while (true) {
       const context = await this.loadContext(
@@ -117,11 +146,79 @@ export class OrchestratorAgent {
         ];
       }
 
+      if (retryCount === 0 && !retryFeedback) {
+        if (this.promptEngineer.isTrivialSmalltalkMessage(params.message)) {
+          lastContent = await this.answerDirectConversation(
+            params.message,
+            context,
+            params.historyMessages,
+          );
+          path = "fast_direct";
+          const conversationMessages = [
+            ...params.historyMessages
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .map((m) => ({
+                role: m.role,
+                content: typeof m.content === "string" ? m.content : "",
+              })),
+            { role: "user", content: params.message },
+            { role: "assistant", content: lastContent },
+          ];
+          void this.runLearningAsync(params.userId, params.sessionId, {
+            messages: conversationMessages.slice(-12),
+            agentResults: [],
+            context,
+          }).catch((err) =>
+            console.error({
+              level: "error",
+              job: "learning",
+              userId: params.userId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          );
+          break;
+        }
+      }
+
       const plan = await this.analyzeIntent(
         params.message,
         context,
         retryFeedback,
       );
+
+      if (plan.steps.length === 0) {
+        lastContent = await this.answerDirectConversation(
+          params.message,
+          context,
+          params.historyMessages,
+        );
+        path = "fast_empty_plan";
+        const conversationMessages = [
+          ...params.historyMessages
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) => ({
+              role: m.role,
+              content: typeof m.content === "string" ? m.content : "",
+            })),
+          { role: "user", content: params.message },
+          { role: "assistant", content: lastContent },
+        ];
+        void this.runLearningAsync(params.userId, params.sessionId, {
+          messages: conversationMessages.slice(-12),
+          agentResults: [],
+          context,
+        }).catch((err) =>
+          console.error({
+            level: "error",
+            job: "learning",
+            userId: params.userId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        );
+        break;
+      }
+
+      const complexity = this.promptEngineer.classifyComplexity(params.message);
 
       const settled = await Promise.allSettled(
         plan.steps.map(async (step) => {
@@ -161,6 +258,7 @@ export class OrchestratorAgent {
         originalMessage: params.message,
         results,
         context,
+        complexity,
       });
       lastContent = aggregated;
 
@@ -213,7 +311,32 @@ export class OrchestratorAgent {
       content: lastContent,
       tool_calls_made,
       stop_reason: "end_turn",
+      path,
     };
+  }
+
+  private async answerDirectConversation(
+    message: string,
+    context: AgentContext,
+    historyMessages: LlmMessage[],
+  ): Promise<string> {
+    const name = context.userProfile?.name ?? "dem Nutzer";
+    const hist = historyMessages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-4)
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: typeof m.content === "string" ? m.content : "",
+      }));
+
+    const res = await this.llm.chat({
+      model: MODEL_IDS.haiku,
+      system:
+        `Du bist ein freundlicher Chief of Staff für ${name}. Antworte sehr kurz (1–3 Sätze), ohne Tools und ohne Fakten zu erfinden.`,
+      messages: [...hist, { role: "user", content: message }],
+      metadata: { user_id: context.userId, source: "cos-agent" },
+    });
+    return res.content ?? "";
   }
 
   private async loadContext(
@@ -263,6 +386,10 @@ export class OrchestratorAgent {
     if (cfoQuick && cfoQuick.steps.every((s) => available.includes(s.agent))) {
       return cfoQuick;
     }
+    const wsQuick = workspaceKeywordPlan(message, context);
+    if (wsQuick && wsQuick.steps.every((s) => available.includes(s.agent))) {
+      return wsQuick;
+    }
 
     const complexity = this.promptEngineer.classifyComplexity(message);
     const webHit = WEB_KEYWORD_RE.test(message);
@@ -299,7 +426,9 @@ export class OrchestratorAgent {
       `\nVerfügbare Agents (nur diese verwenden): ${available.join(", ")}.` +
       learningHint +
       "\n\nAntworte NUR mit JSON im Format " +
-      '{"steps":[{"agent":"notion"|"gmail"|"slack"|"drive"|"calendar"|"cfo"|"web_search","task":{...},"rationale":"optional"}],"reasoning":"optional"}';
+      '{"steps":[{"agent":"notion"|"gmail"|"slack"|"drive"|"calendar"|"cfo"|"web_search"|"workspace","task":{...},"rationale":"optional"}],"reasoning":"optional"}. ' +
+      'Für agent "workspace": task enthält realm "wiki"|"tasks". wiki: action list_approved (optional limit) oder get_approved_by_slug mit slug. tasks: action list_not_done (optional limit). ' +
+      "Wenn keine Tools nötig sind (reine Konversation), setze steps auf [].";
 
     const res = await this.llm.chat({
       model: MODEL_IDS.haiku,
@@ -312,6 +441,9 @@ export class OrchestratorAgent {
     const parsed = parseJsonObject<{ steps?: unknown }>(res.content ?? "");
     if (!parsed || !Array.isArray(parsed.steps)) {
       return this.fallbackPlan(context);
+    }
+    if (parsed.steps.length === 0) {
+      return { steps: [] };
     }
     const steps: AgentStep[] = [];
     for (const raw of parsed.steps) {
@@ -326,7 +458,9 @@ export class OrchestratorAgent {
         rationale: typeof o.rationale === "string" ? o.rationale : undefined,
       });
     }
-    if (steps.length === 0) return this.fallbackPlan(context);
+    if (steps.length === 0) {
+      return this.fallbackPlan(context);
+    }
     const filtered = steps.filter((s) => available.includes(s.agent));
     if (filtered.length === 0) return this.fallbackPlan(context);
 

@@ -321,6 +321,7 @@ export const driveTool: Tool = {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    _ctx?: unknown,
   ): Promise<ToolResult> {
     const gate = await assertGoogleDrive(db, userId);
     if (gate) return gate;

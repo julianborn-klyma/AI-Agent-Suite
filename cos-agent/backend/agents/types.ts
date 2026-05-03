@@ -84,4 +84,6 @@ export type OrchestratorResult = {
   content: string;
   tool_calls_made: string[];
   stop_reason: string;
+  /** Observability: welcher Antwortpfad genutzt wurde. */
+  path?: "fast_direct" | "fast_empty_plan" | "orchestrated";
 };

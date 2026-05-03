@@ -35,10 +35,23 @@ const EXPECTED_MIGRATION_FILES = [
   "011_password_security.sql",
   "012_tenants.sql",
   "013_onboarding.sql",
+  "014_app_schema_tasks_wiki.sql",
+] as const;
+
+/** Kern-Tabellen unter Schema app (SaaS-Domäne, tenant_id + RLS). */
+const EXPECTED_APP_TABLES = [
+  "projects",
+  "task_assignees",
+  "task_teams",
+  "tasks",
+  "team_members",
+  "teams",
+  "wiki_links",
+  "wiki_pages",
 ] as const;
 
 Deno.test({
-  name: "Migration-Runner — 001–013, schema_migrations, Idempotenz",
+  name: "Migration-Runner — 001–014, schema_migrations, Idempotenz",
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -73,6 +86,22 @@ Deno.test({
           AND column_name = 'onboarding_completed'
       `;
       assertEquals(onboardCol.length, 1);
+
+      const appSchema = await sql`
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name = 'app'
+      `;
+      assertEquals(appSchema.length, 1, "Schema app fehlt");
+
+      for (const table of EXPECTED_APP_TABLES) {
+        const rows = await sql`
+          SELECT table_name
+          FROM information_schema.tables
+          WHERE table_schema = 'app' AND table_name = ${table}
+        `;
+        assertEquals(rows.length, 1, `app.${table} fehlt`);
+      }
 
       const applied = await sql`
         SELECT name FROM schema_migrations ORDER BY name

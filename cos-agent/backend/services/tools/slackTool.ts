@@ -432,6 +432,7 @@ export const slackTool: Tool = {
     params: unknown,
     userId: string,
     db: DatabaseClient,
+    _ctx?: unknown,
   ): Promise<ToolResult> {
     const token = await getSlackToken(db, userId);
     if (!token) {

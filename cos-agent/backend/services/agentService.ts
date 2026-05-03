@@ -110,6 +110,16 @@ export class AgentService {
       now: this.nowFn,
     });
 
+    console.debug(
+      JSON.stringify({
+        job: "chat_orchestrator",
+        path: orch.path ?? "orchestrated",
+        llm_calls: llmCalls.length,
+        userId: params.userId,
+        sessionId: params.sessionId,
+      }),
+    );
+
     for (const c of llmCalls) {
       await this.logLlmCall(
         params.userId,

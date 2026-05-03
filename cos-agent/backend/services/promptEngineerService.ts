@@ -16,14 +16,36 @@ const HIGH_PAT =
   /\b(analysiere|analysieren|bewerte|bewerten|businessplan|strategie|finanzierung|investition)\b/i;
 const LOW_PAT =
   /\b(was|wie|zeig|zeige|liste|wann|wer|wo)\b/i;
+/** Kurze Grüße / Smalltalk ohne Fragezeichen — zuverlässig „low“ für Tiering & Intent. */
+const GREETING_PAT =
+  /^(?:hi|hallo|hallöchen|hey|ho|moin|servus|guten\s+(?:morgen|tag|abend)|danke(?:\s+schön)?|dankeschön|dankeschoen|thx|thanks|merci|ok|okay|ja|nein|tschüss|tschuess|ciao|bye|super|cool|alles\s+klar|morgen|abend)(?:\s*[!.,])*$/iu;
 
 export class PromptEngineerService {
   constructor(private readonly llm: LlmClient) {}
+
+  /**
+   * Streng: sehr kurze Grüße/Danke/OK ohne Frage — für Direktpfad ohne Tool-Orchestrierung.
+   */
+  isTrivialSmalltalkMessage(message: string): boolean {
+    const t = message.trim();
+    if (!t || t.length > 40 || /\?/.test(t)) return false;
+    const normalized = t.replace(/\s+/g, " ");
+    const words = normalized.split(/\s+/).filter(Boolean).length;
+    if (words > 4) return false;
+    return GREETING_PAT.test(normalized);
+  }
 
   classifyComplexity(message: string): "low" | "medium" | "high" {
     const t = message.trim();
     const words = t.split(/\s+/).filter(Boolean).length;
     if (words > 200 || HIGH_PAT.test(t)) return "high";
+    const normalized = t.replace(/\s+/g, " ");
+    if (
+      words <= 6 && !/\?/.test(t) &&
+      GREETING_PAT.test(normalized)
+    ) {
+      return "low";
+    }
     if (words < 20 && LOW_PAT.test(t)) return "low";
     return "medium";
   }

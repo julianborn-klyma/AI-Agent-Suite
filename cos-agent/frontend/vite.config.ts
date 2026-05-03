@@ -10,17 +10,24 @@ export default defineConfig(({ mode }) => {
   const proxyTarget =
     env.VITE_DEV_API_PROXY_TARGET?.trim() || "http://127.0.0.1:8090";
 
+  const apiProxy = {
+    "/api": {
+      target: proxyTarget,
+      changeOrigin: true,
+    },
+  } as const;
+
   return {
     plugins: [react()],
     server: {
       port: 5174,
       strictPort: true,
-      proxy: {
-        "/api": {
-          target: proxyTarget,
-          changeOrigin: true,
-        },
-      },
+      proxy: { ...apiProxy },
+    },
+    /** Wie `npm run dev`: `/api` → Backend (sonst schlagen statische Builds + `vite preview` fehl). */
+    preview: {
+      port: 4173,
+      proxy: { ...apiProxy },
     },
   };
 });

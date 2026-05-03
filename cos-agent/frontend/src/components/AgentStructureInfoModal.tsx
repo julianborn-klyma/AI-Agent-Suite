@@ -79,7 +79,7 @@ export function AgentStructureInfoModal({ open, onClose }: Props) {
         alignItems: "center",
         justifyContent: "center",
         padding: "1rem",
-        background: "hsl(20 10% 10% / 0.45)",
+        background: "rgb(8 3 27 / 0.45)",
       }}
       role="presentation"
       onClick={(e) => {
