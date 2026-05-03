@@ -1,13 +1,13 @@
 /**
- * Ohne `VITE_API_URL`: im Vite-Dev leer → Requests gegen `/api…` (Proxy, kein CORS-Problem).
- * Production-Build: Fallback `http://localhost:8090` — für Deploy immer `VITE_API_URL` setzen.
+ * Ohne `VITE_API_URL`: leere Basis → Requests gegen `/api…` (gleicher Browser-Origin).
+ * - Vite `dev` / `preview`: Proxy in `vite.config.ts` leitet `/api` zum Backend (kein CORS).
+ * - Deploy mit getrenntem API-Host: `VITE_API_URL` beim Build setzen; Backend `CORS_ORIGINS` anpassen.
  */
 function resolveApiBaseUrl(): string {
   const raw = import.meta.env.VITE_API_URL as string | undefined;
   const trimmed = raw?.trim() ?? "";
   if (trimmed !== "") return trimmed.replace(/\/+$/, "");
-  if (import.meta.env.DEV) return "";
-  return "http://localhost:8090";
+  return "";
 }
 
 export const API_URL = resolveApiBaseUrl();
