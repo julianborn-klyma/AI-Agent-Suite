@@ -10,6 +10,12 @@ export type AppEnv = {
   serviceToken: string;
   jwtSecret: string;
   corsOrigins: string[];
+  /**
+   * Wenn true: zusätzlich alle Browser-Origins `http(s)://localhost:*` und
+   * `http(s)://127.0.0.1:*` (lokale Vite-Ports, Preview, …) ohne Eintrag in `CORS_ORIGINS`.
+   * In Produktion typischerweise false; lokal `CORS_ALLOW_LOCALHOST=1` setzen.
+   */
+  corsAllowLocalhost: boolean;
   /** Anthropic API Key (Messages API). */
   anthropicApiKey: string;
   /** Google OAuth (optional bis Route aufgerufen wird). */
@@ -73,6 +79,11 @@ export async function loadEnv(): Promise<AppEnv> {
   const serviceToken = Deno.env.get("SERVICE_TOKEN");
   const jwtSecret = Deno.env.get("JWT_SECRET");
   const corsRaw = Deno.env.get("CORS_ORIGINS");
+  const corsAllowLocalhostRaw = Deno.env.get("CORS_ALLOW_LOCALHOST")?.trim()
+    .toLowerCase();
+  const corsAllowLocalhost = corsAllowLocalhostRaw === "1" ||
+    corsAllowLocalhostRaw === "true" ||
+    corsAllowLocalhostRaw === "yes";
   const anthropicApiKeyRaw = Deno.env.get("ANTHROPIC_API_KEY");
   const emailServiceUrlRaw = Deno.env.get("EMAIL_SERVICE_URL")?.trim() ?? null;
   const emailServiceTokenRaw = Deno.env.get("EMAIL_SERVICE_TOKEN")?.trim() ??
@@ -137,6 +148,7 @@ export async function loadEnv(): Promise<AppEnv> {
     serviceToken,
     jwtSecret,
     corsOrigins: parseOrigins(corsRaw),
+    corsAllowLocalhost,
     anthropicApiKey,
     googleClientId,
     googleClientSecret,

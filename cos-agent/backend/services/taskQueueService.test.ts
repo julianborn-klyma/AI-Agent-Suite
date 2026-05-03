@@ -26,6 +26,7 @@ function deliveryEnv(): AppEnv {
     serviceToken: "test-service-token-32-chars-minimum!!",
     jwtSecret: "test-jwt-secret-32-chars-minimum!!!!",
     corsOrigins: ["http://localhost:5173"],
+    corsAllowLocalhost: false,
     anthropicApiKey: "sk-ant-test-dummy-key-20chars",
     googleClientId: "",
     googleClientSecret: "",

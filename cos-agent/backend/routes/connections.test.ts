@@ -48,6 +48,7 @@ function oauthStubEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     serviceToken: "test-service-token-32-chars-minimum!!",
     jwtSecret: TEST_JWT_SECRET,
     corsOrigins: ["http://localhost:5173"],
+    corsAllowLocalhost: false,
     anthropicApiKey: "sk-ant-test-dummy-key-20chars",
     googleClientId: "test-google-client",
     googleClientSecret: "test-google-secret",

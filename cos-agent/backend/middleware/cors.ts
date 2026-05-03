@@ -1,5 +1,18 @@
 import type { AppEnv } from "../config/env.ts";
 
+/** Browser-Origin: nur Loopback-Host, beliebiger Port (Vite dev/preview, …). */
+export function isLocalLoopbackBrowserOrigin(origin: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  return u.hostname === "localhost" || u.hostname === "127.0.0.1" ||
+    u.hostname === "[::1]";
+}
+
 export function corsHeaders(
   req: Request,
   env: AppEnv,
@@ -8,7 +21,10 @@ export function corsHeaders(
   if (!origin) {
     return {};
   }
-  if (!env.corsOrigins.includes(origin)) {
+  const allowed =
+    env.corsOrigins.includes(origin) ||
+    (env.corsAllowLocalhost && isLocalLoopbackBrowserOrigin(origin));
+  if (!allowed) {
     return null;
   }
   return {
