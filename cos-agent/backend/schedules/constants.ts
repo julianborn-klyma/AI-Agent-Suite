@@ -4,6 +4,7 @@ export const SCHEDULE_JOB_TYPES = [
   "slack_digest",
   "drive_sync",
   "weekly_consolidator",
+  "personal_wiki_enrichment",
 ] as const;
 
 export type ScheduleJobType = (typeof SCHEDULE_JOB_TYPES)[number];
@@ -18,6 +19,8 @@ export const DEFAULT_JOB_CRONS: Record<ScheduleJobType, string> = {
   slack_digest: "0 18 * * 1-5",
   drive_sync: "0 6 * * *",
   weekly_consolidator: "0 18 * * 0",
+  /** Nach typischen Digest-Zeiten; nur persönliche me-*-Wiki-Seiten. */
+  personal_wiki_enrichment: "30 19 * * 1-5",
 };
 
 export const DEFAULT_JOB_DISPLAY: Record<
@@ -44,5 +47,10 @@ export const DEFAULT_JOB_DISPLAY: Record<
   weekly_consolidator: {
     display_name: "Wöchentliche Verdichtung",
     description: "Kontext und Learnings der Woche verdichten",
+  },
+  personal_wiki_enrichment: {
+    display_name: "Persönliches Wiki",
+    description:
+      "E-Mail-/Slack-Summaries, Learnings und Daily-Reflexion in me-*-Wiki-Seiten einarbeiten",
   },
 };

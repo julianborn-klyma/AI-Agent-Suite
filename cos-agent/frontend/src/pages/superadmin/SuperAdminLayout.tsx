@@ -1,8 +1,10 @@
 import type { CSSProperties } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
-const sidebarBg = "#1a1a2e";
-const accent = "#ff6b35";
+const sidebarBg = "hsl(34 16% 9%)";
+/** BERT: Gelb → Tinte (Design-Tokens über CSS-Variablen). */
+const superAdminBadgeGradient =
+  "linear-gradient(135deg, hsl(var(--ds-color-yellow-accent)), hsl(var(--ds-color-brand)))";
 
 const linkStyle = ({
   isActive,
@@ -49,7 +51,7 @@ export function SuperAdminLayout() {
               textTransform: "uppercase",
               padding: "0.35rem 0.55rem",
               borderRadius: 6,
-              background: `linear-gradient(135deg, ${accent}, #c9184a)`,
+              background: superAdminBadgeGradient,
               color: "#fff",
               boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
             }}

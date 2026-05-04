@@ -11,14 +11,15 @@ export const E2E_USER_PASSWORD =
 /** Sichtbares Login-Formular (ohne altes Token / Redirect zu /chat). */
 async function ensureLoginScreen(page: Page): Promise<void> {
   await page.context().clearCookies();
-  await page.addInitScript(() => {
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  /** Einmalig — kein `addInitScript`: das würde bei jeder späteren Navigation den Token löschen. */
+  await page.evaluate(() => {
     try {
       localStorage.removeItem("cos_token");
     } catch {
       /* ignore */
     }
   });
-  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Anmelden" })).toBeVisible({
     timeout: 30_000,
   });

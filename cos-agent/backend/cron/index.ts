@@ -5,6 +5,7 @@ import { startDriveSyncCron } from "./driveSync.ts";
 import { startEmailCategorizationCron } from "./emailCategorization.ts";
 import { startSlackDigestCron } from "./slackDigest.ts";
 import { startWeeklyConsolidatorCron } from "./weeklyConsolidator.ts";
+import { startPersonalWikiEnrichmentCron } from "./personalWikiEnrichment.ts";
 import { startTaskQueueCron } from "./taskQueue.ts";
 
 /**
@@ -29,5 +30,6 @@ export function startAllCrons(deps: AppDependencies, env: AppEnv): void {
   startWeeklyConsolidatorCron(deps, env);
   startDriveSyncCron(deps, env);
   startSlackDigestCron(deps, env);
+  startPersonalWikiEnrichmentCron(deps, env);
   startTaskQueueCron(deps, env);
 }

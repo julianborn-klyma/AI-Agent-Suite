@@ -63,6 +63,12 @@ try {
       onboarding_completed_at = COALESCE(onboarding_completed_at, NOW())
     WHERE email IN (${ADMIN_EMAIL}, ${USER_EMAIL}, ${SUPERADMIN_EMAIL})
   `;
+  /** Lokale E2E-Logins zählen fürs IP-Rate-Limit (`auth.ts`); nach Retries/Fehlläufen freiräumen. */
+  await sql`
+    DELETE FROM cos_login_attempts
+    WHERE ip_address IN ('127.0.0.1', '::1', 'unknown', '203.0.113.87')
+       OR ip_address LIKE '::ffff:127.0.0.1'
+  `;
   console.log(
     `playwright_seed: OK — ${ADMIN_EMAIL}, ${SUPERADMIN_EMAIL}, ${USER_EMAIL} (Passwort für E2E gesetzt)`,
   );

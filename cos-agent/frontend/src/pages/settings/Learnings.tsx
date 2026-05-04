@@ -122,8 +122,12 @@ export function SettingsLearningsPage() {
             style={{
               padding: "0.35rem 0.65rem",
               borderRadius: "var(--radius-md)",
-              border: tab.key === t.key ? "1px solid var(--accent)" : "1px solid var(--border)",
-              background: tab.key === t.key ? "var(--accent-soft)" : "var(--surface)",
+              border: tab.key === t.key
+                ? "1px solid hsl(var(--ds-color-focus))"
+                : "1px solid var(--border)",
+              background: tab.key === t.key
+                ? "hsl(var(--ds-status-info-bg))"
+                : "var(--surface)",
               cursor: "pointer",
               fontSize: "0.85rem",
             }}
@@ -157,7 +161,7 @@ export function SettingsLearningsPage() {
         };
         return (
           <article key={L.id} style={cardStyle}>
-            <div style={{ fontSize: "0.8rem", color: "var(--accent)", marginBottom: "0.35rem" }}>
+            <div style={{ fontSize: "0.8rem", color: "var(--link)", marginBottom: "0.35rem" }}>
               {labelForCategory(L.category)}
             </div>
             <p style={{ margin: 0, lineHeight: 1.45 }}>{L.content}</p>

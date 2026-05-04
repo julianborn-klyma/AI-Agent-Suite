@@ -8,6 +8,7 @@ import type { LlmClient } from "./services/llm/llmTypes.ts";
 import type { OAuthService } from "./services/oauthService.ts";
 import type { ToolExecutor } from "./services/tools/toolExecutor.ts";
 import type { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
+import type { PersonalWikiEnrichmentService } from "./services/personalWikiEnrichmentService.ts";
 import type { TaskQueueService } from "./services/taskQueueService.ts";
 import type { AuditService } from "./services/auditService.ts";
 import type { PasswordService } from "./services/passwordService.ts";
@@ -27,6 +28,7 @@ export type AppDependencies = {
   emailStyleService: EmailStyleService;
   emailCategorizationService: EmailCategorizationService;
   weeklyConsolidatorService: WeeklyConsolidatorService;
+  personalWikiEnrichmentService: PersonalWikiEnrichmentService;
   driveSyncService: DriveSyncService;
   taskQueueService: TaskQueueService;
   passwordService: PasswordService;

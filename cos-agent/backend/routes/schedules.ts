@@ -189,6 +189,7 @@ const RUN_NOW_ALLOWED = new Set([
   "daily_briefing",
   "email_categorization",
   "drive_sync",
+  "personal_wiki_enrichment",
 ]);
 
 export async function handleScheduleRunNowPost(
@@ -247,6 +248,8 @@ export async function handleScheduleRunNowPost(
         await deps.emailCategorizationService.categorizeEmails(userId);
       } else if (jobType === "drive_sync") {
         await deps.driveSyncService.syncNewDocuments(userId);
+      } else if (jobType === "personal_wiki_enrichment") {
+        await deps.personalWikiEnrichmentService.runForUser(userId);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

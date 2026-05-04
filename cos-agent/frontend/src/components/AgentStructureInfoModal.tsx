@@ -159,7 +159,13 @@ export function AgentStructureInfoModal({ open, onClose }: Props) {
             Profil, Learnings, verbundene Tools, Dokumente
           </div>
           <div style={arrow}>↓</div>
-          <div style={{ ...node, borderColor: "var(--accent)", background: "var(--accent-soft)" }}>
+          <div
+            style={{
+              ...node,
+              borderColor: "hsl(var(--ds-color-focus))",
+              background: "var(--accent-soft)",
+            }}
+          >
             <div style={{ ...nodeTitle, color: "var(--text)" }}>Orchestrator</div>
             Intent-Analyse → Plan (welche Sub-Agenten, welche Tasks)
           </div>

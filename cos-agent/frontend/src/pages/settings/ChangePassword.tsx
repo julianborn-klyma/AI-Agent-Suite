@@ -68,7 +68,11 @@ export function ChangePasswordPage() {
   }
 
   const barColor =
-    score <= 1 ? "var(--danger)" : score <= 2 ? "#c9a227" : "var(--accent)";
+    score <= 1
+      ? "var(--danger)"
+      : score <= 2
+      ? "hsl(var(--ds-status-warning-fg))"
+      : "hsl(var(--ds-status-success-fg))";
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "1rem" }}>
@@ -183,7 +187,7 @@ export function ChangePasswordPage() {
           </ul>
         )}
         {ok && (
-          <p style={{ color: "var(--accent)", fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
+          <p style={{ color: "var(--success)", fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
             Passwort wurde geändert.
           </p>
         )}
@@ -194,8 +198,8 @@ export function ChangePasswordPage() {
             padding: "0.55rem 1.2rem",
             border: "none",
             borderRadius: "var(--radius-md)",
-            background: pending ? "var(--muted)" : "var(--accent)",
-            color: "var(--accent-foreground)",
+            background: pending ? "var(--muted)" : "var(--co-btn-primary-bg)",
+            color: pending ? "var(--surface)" : "var(--co-btn-primary-fg)",
             fontWeight: 600,
           }}
         >

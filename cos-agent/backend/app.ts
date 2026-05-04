@@ -62,6 +62,7 @@ import {
   handleOnboardingSkipPost,
   handleOnboardingStatusGet,
 } from "./routes/onboarding.ts";
+import { handleReflectionDailyPost } from "./routes/reflection.ts";
 import {
   handleDocumentAsk,
   handleDocumentDelete,
@@ -282,6 +283,12 @@ export function createRequestHandler(
         res = missingDepsResponse();
       } else {
         res = await handleOnboardingSkipPost(req, env, deps);
+      }
+    } else if (url.pathname === "/api/reflection/daily" && req.method === "POST") {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await handleReflectionDailyPost(req, env, deps);
       }
     } else if (url.pathname === "/api/learnings" && req.method === "GET") {
       if (!deps) {

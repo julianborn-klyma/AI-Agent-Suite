@@ -264,8 +264,8 @@ export function ConnectionsPanel() {
                   padding: "0.45rem 0.85rem",
                   borderRadius: "var(--radius-md)",
                   border: "none",
-                  background: "var(--accent)",
-                  color: "var(--accent-foreground)",
+                  background: "var(--co-btn-primary-bg)",
+                  color: "var(--co-btn-primary-fg)",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -339,8 +339,8 @@ export function ConnectionsPanel() {
               padding: "0.45rem 0.85rem",
               borderRadius: "var(--radius-md)",
               border: "none",
-              background: "var(--accent)",
-              color: "var(--accent-foreground)",
+              background: "var(--co-btn-primary-bg)",
+              color: "var(--co-btn-primary-fg)",
               fontWeight: 600,
               cursor: notionM.isPending ? "wait" : "pointer",
               opacity: notionM.isPending || !notionToken.trim() ? 0.65 : 1,
@@ -394,8 +394,8 @@ export function ConnectionsPanel() {
                 padding: "0.45rem 0.85rem",
                 borderRadius: "var(--radius-md)",
                 border: "none",
-                background: "var(--accent)",
-                color: "var(--accent-foreground)",
+                background: "var(--co-btn-primary-bg)",
+                color: "var(--co-btn-primary-fg)",
                 fontWeight: 600,
                 cursor: notionDbM.isPending ? "wait" : "pointer",
                 opacity: notionDbM.isPending || !notionDbId.trim() ? 0.65 : 1,
@@ -441,7 +441,7 @@ export function ConnectionsPanel() {
             <div className="co-card-title">Slack</div>
             <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
               Liest Nachrichten in deinem Namen (OAuth). Für Digest-Jobs unter{" "}
-              <Link to="/settings/schedules" style={{ color: "var(--accent)" }}>
+              <Link to="/settings/schedules" style={{ color: "var(--link)" }}>
                 Jobs &amp; Automation
               </Link>
               .
@@ -479,8 +479,8 @@ export function ConnectionsPanel() {
                   padding: "0.45rem 0.85rem",
                   borderRadius: "var(--radius-md)",
                   border: "none",
-                  background: "var(--accent)",
-                  color: "var(--accent-foreground)",
+                  background: "var(--co-btn-primary-bg)",
+                  color: "var(--co-btn-primary-fg)",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -531,8 +531,8 @@ export function ConnectionsPanel() {
               padding: "0.45rem 0.85rem",
               borderRadius: "var(--radius-md)",
               border: "none",
-              background: "var(--accent)",
-              color: "var(--accent-foreground)",
+              background: "var(--co-btn-primary-bg)",
+              color: "var(--co-btn-primary-fg)",
               fontWeight: 600,
               cursor: driveFolderM.isPending ? "wait" : "pointer",
               opacity: driveFolderM.isPending || !driveFolderId.trim() ? 0.65 : 1,

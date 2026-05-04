@@ -1,52 +1,58 @@
 /**
- * Layout/Typo/Radii orientiert an Aware; Akzentfarbe: Klyma Gelb (Amber).
- * Schrift: DM Sans (OFL). Code: JetBrains Mono.
+ * Designsystem: BERT-Tokens wie in Fahrzeug-Fluss (`src/styles/tokens.css`).
+ * Aliase `--bg`, `--surface`, `--accent` … bleiben für bestehende Komponenten.
  */
+@import "./styles/tokens.css";
+
 :root {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-display: var(--font-sans);
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: var(--ds-font-sans);
+  --font-display: var(--ds-font-sans);
+  --font-mono: var(--ds-font-mono);
 
-  /* Neutrals / Flächen (Aware-nah); Primärakzent = Klyma Gelb */
-  --ink: #08031b;
-  --neutrals-200: #c9c9cb;
-  --neutrals-500: #78777e;
-  --bg-canvas: #f9f7f6;
-  --bg-muted: #f3f0ed;
-  /* Sidebar: sehr helles Gelb/Ocker (warm, kaum gesättigt) */
-  --bg-sidebar: hsl(46 52% 96%);
-  --off-white: #fefdf9;
-  --surface-white: #ffffff;
-  --border-tint: #e6e4f0;
+  --bg: hsl(var(--ds-color-bg));
+  --bg-canvas: hsl(var(--ds-color-bg));
+  --surface: hsl(var(--ds-color-surface));
+  --surface-white: hsl(var(--ds-color-surface));
+  --surface-2: hsl(var(--ds-color-surface-muted));
+  --bg-muted: hsl(var(--ds-color-surface-muted));
+  --sidebar: hsl(var(--ds-color-surface-muted));
+  --off-white: hsl(var(--ds-color-surface));
 
-  --bg: var(--bg-canvas);
-  --surface: var(--surface-white);
-  --surface-2: var(--bg-muted);
-  --text: #000000;
-  --muted: var(--neutrals-500);
-  --border: var(--border-tint);
-  --accent: hsl(45 100% 51%);
-  --accent-foreground: hsl(20 10% 10%);
-  --accent-hover: hsl(45 100% 44%);
-  --accent-soft: hsl(45 100% 51% / 0.12);
-  --accent-soft-strong: hsl(45 100% 51% / 0.18);
-  --sidebar: var(--bg-sidebar);
-  --danger: #ff4545;
-  --danger-border: rgb(255 69 69 / 0.35);
-  --success: #0d8a5b;
-  --success-border: rgb(13 138 91 / 0.35);
-  --success-soft: rgb(13 138 91 / 0.1);
-  --link: hsl(28 55% 36%);
-  --link-hover: hsl(28 55% 28%);
+  --text: hsl(var(--ds-color-text));
+  --muted: hsl(var(--ds-color-text-muted));
+  --ink: hsl(var(--ds-color-text));
+  --neutrals-500: hsl(var(--ds-color-text-muted));
+  --border: hsl(var(--ds-color-border));
+  --border-tint: hsl(var(--ds-color-border));
+  --neutrals-200: hsl(var(--ds-color-border-strong));
 
-  --radius-sm: 0.875rem;
-  --radius-md: 1.25rem;
-  --radius-lg: 1.25rem;
+  /* Primär-Buttons: dunkle Tinte (BERT), nicht Vollgelb. */
+  --co-btn-primary-bg: hsl(var(--ds-color-brand));
+  --co-btn-primary-fg: hsl(var(--ds-color-brand-foreground));
 
-  --shadow-sm: 0 1px 2px rgb(8 3 27 / 0.06);
-  --shadow-md: 0 4px 20px rgb(8 3 27 / 0.08);
-  --ring: 0 0 0 3px hsl(45 100% 51% / 0.28);
+  /* Marken-Gelb — sparsam einsetzen (Akzent, aktive Zeilen, sekundäre CTAs). */
+  --accent: hsl(var(--ds-color-yellow-accent));
+  --accent-foreground: hsl(var(--ds-color-yellow-accent-foreground));
+  --accent-soft: hsl(var(--ds-color-yellow-soft));
+  --accent-soft-strong: hsl(var(--ds-color-yellow-soft));
+  --accent-hover: color-mix(in hsl, hsl(var(--ds-color-yellow-accent)) 88%, black);
+
+  --danger: hsl(var(--ds-status-danger-fg));
+  --danger-border: hsl(var(--ds-status-danger-fg) / 0.35);
+  --success: hsl(var(--ds-status-success-fg));
+  --success-border: hsl(var(--ds-status-success-fg) / 0.35);
+  --success-soft: hsl(var(--ds-status-success-bg));
+
+  --link: hsl(var(--ds-status-info-fg));
+  --link-hover: color-mix(in hsl, hsl(var(--ds-status-info-fg)) 82%, black);
+
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+
+  --shadow-sm: 0 1px 2px hsl(var(--ds-color-text) / 0.06);
+  --shadow-md: 0 4px 20px hsl(var(--ds-color-text) / 0.08);
+  --ring: 0 0 0 3px hsl(var(--ds-color-focus) / 0.28);
   --outline-offset: 0.125rem;
   --layout-main-padding: 1.25rem;
 }
@@ -192,7 +198,7 @@ body {
 .co-badge--accent {
   background: var(--accent-soft);
   color: var(--ink);
-  border-color: hsl(45 60% 70% / 0.45);
+  border-color: hsl(var(--ds-color-yellow-accent) / 0.35);
 }
 
 .co-badge--success {
@@ -228,8 +234,8 @@ body {
 .co-input:focus,
 .co-textarea:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--ring);
+  border-color: hsl(var(--ds-color-focus));
+  box-shadow: 0 0 0 3px hsl(var(--ds-color-focus) / 0.28);
 }
 
 .co-textarea {
@@ -270,7 +276,7 @@ body {
 
 .co-chip--on {
   background: var(--accent-soft);
-  border-color: hsl(45 70% 55% / 0.45);
+  border-color: hsl(var(--ds-color-yellow-accent) / 0.4);
   color: var(--ink);
 }
 
@@ -289,12 +295,12 @@ body {
 }
 
 .co-btn--primary {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: var(--co-btn-primary-bg);
+  color: var(--co-btn-primary-fg);
 }
 
 .co-btn--primary:hover {
-  background: var(--accent-hover);
+  background: color-mix(in hsl, hsl(var(--ds-color-brand)) 88%, white);
 }
 
 .co-btn--ghost {
@@ -363,7 +369,7 @@ a.co-nav-pill:hover {
 a.co-nav-pill.active {
   background: var(--accent-soft);
   color: var(--ink);
-  border-color: hsl(45 70% 55% / 0.35);
+  border-color: hsl(var(--ds-color-yellow-accent) / 0.35);
 }
 
 .co-table-wrap {
@@ -545,4 +551,49 @@ code {
 .wiki-md-preview h3 {
   font-size: 1rem;
   margin: 0.5rem 0 0.35rem;
+}
+
+/* —— BERT / Fahrzeug-Fluss: optionale Utility-Klassen (Status, Flächen) —— */
+.hairline {
+  box-shadow: inset 0 0 0 var(--ds-hairline) hsl(var(--ds-color-border));
+}
+
+.surface-panel {
+  border: 1px solid hsl(var(--ds-color-border));
+  border-radius: var(--ds-radius-lg);
+  background: hsl(var(--ds-color-surface));
+}
+
+.yellow-accent-bar {
+  background-color: hsl(var(--ds-color-yellow-accent));
+  color: hsl(var(--ds-color-yellow-accent-foreground));
+}
+
+.yellow-faint-row {
+  background-color: hsl(var(--ds-color-yellow-accent) / var(--ds-color-yellow-faint-alpha));
+}
+
+.status-slot-neutral {
+  background-color: hsl(var(--ds-status-neutral-bg));
+  color: hsl(var(--ds-status-neutral-fg));
+}
+
+.status-slot-info {
+  background-color: hsl(var(--ds-status-info-bg));
+  color: hsl(var(--ds-status-info-fg));
+}
+
+.status-slot-warning {
+  background-color: hsl(var(--ds-status-warning-bg));
+  color: hsl(var(--ds-status-warning-fg));
+}
+
+.status-slot-danger {
+  background-color: hsl(var(--ds-status-danger-bg));
+  color: hsl(var(--ds-status-danger-fg));
+}
+
+.status-slot-success {
+  background-color: hsl(var(--ds-status-success-bg));
+  color: hsl(var(--ds-status-success-fg));
 }

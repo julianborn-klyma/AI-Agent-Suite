@@ -195,7 +195,7 @@ export function SettingsSchedulesPage() {
             {!dep.ok && (
               <p style={{ margin: "0.65rem 0 0", color: "var(--danger)", fontSize: "0.9rem" }}>
                 {dep.message}{" "}
-                <Link to="/settings/connections" style={{ color: "var(--accent)" }}>
+                <Link to="/settings/connections" style={{ color: "var(--link)" }}>
                   Zu Verbindungen
                 </Link>
               </p>

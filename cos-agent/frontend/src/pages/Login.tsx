@@ -214,8 +214,8 @@ export function LoginPage() {
             padding: "0.6rem",
             border: "none",
             borderRadius: "var(--radius-md)",
-            background: pending ? "var(--muted)" : "var(--accent)",
-            color: pending ? "var(--surface)" : "var(--accent-foreground)",
+            background: pending ? "var(--muted)" : "var(--co-btn-primary-bg)",
+            color: pending ? "var(--surface)" : "var(--co-btn-primary-fg)",
             fontWeight: 600,
             marginBottom: "0.75rem",
           }}

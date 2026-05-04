@@ -208,7 +208,9 @@ export function TaskListPage() {
                 fontSize: "0.78rem",
                 padding: "0.2rem 0.45rem",
                 borderRadius: 6,
-                border: promptEngineerOpen ? "1px solid var(--accent)" : "1px solid var(--border)",
+                border: promptEngineerOpen
+                  ? "1px solid hsl(var(--ds-color-focus))"
+                  : "1px solid var(--border)",
                 background: promptEngineerOpen ? "var(--accent-soft)" : "transparent",
                 cursor: "pointer",
                 color: "var(--text)",
@@ -384,8 +386,8 @@ export function TaskListPage() {
               padding: "0.55rem",
               borderRadius: 6,
               border: "none",
-              background: "var(--accent)",
-              color: "var(--accent-foreground)",
+              background: "var(--co-btn-primary-bg)",
+              color: "var(--co-btn-primary-fg)",
               fontWeight: 600,
               cursor: submitting ? "wait" : "pointer",
             }}
@@ -591,7 +593,9 @@ function TaskCard(props: {
       {tab === "running" && (
         <>
           <style>{pulseKeyframes}</style>
-          <div style={{ fontSize: "0.75rem", color: "var(--accent)" }}>⚡ LÄUFT GERADE</div>
+          <div style={{ fontSize: "0.75rem", color: "hsl(var(--ds-status-warning-fg))" }}>
+            ⚡ LÄUFT GERADE
+          </div>
           <div style={{ fontWeight: 600, margin: "0.25rem 0" }}>{task.title}</div>
           <div style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
             Gestartet{" "}
@@ -603,7 +607,7 @@ function TaskCard(props: {
               height: 6,
               borderRadius: 4,
               background:
-                "linear-gradient(90deg, var(--accent-soft), var(--accent))",
+                "linear-gradient(90deg, var(--accent-soft), hsl(var(--ds-color-brand)))",
               animation: "co-task-pulse 1.4s ease-in-out infinite",
             }}
           />

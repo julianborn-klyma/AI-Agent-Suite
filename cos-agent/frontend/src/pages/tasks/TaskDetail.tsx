@@ -100,8 +100,8 @@ export function TaskDetailPage() {
           padding: "0.5rem 1rem",
           borderRadius: 6,
           border: "1px solid var(--border)",
-          background: "var(--accent)",
-          color: "var(--accent-foreground)",
+          background: "var(--co-btn-primary-bg)",
+          color: "var(--co-btn-primary-fg)",
           fontWeight: 600,
           cursor: "pointer",
         }}

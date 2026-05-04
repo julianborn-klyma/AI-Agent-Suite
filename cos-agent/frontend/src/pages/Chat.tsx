@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { PromptEngineerPanel } from "../components/PromptEngineerPanel.tsx";
 import { useAuth } from "../hooks/useAuth.ts";
 import { useChat } from "../hooks/useChat.ts";
@@ -14,6 +14,15 @@ function previewShort(text: string, max = 60): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+const DAILY_CHECKIN_PROMPT = `## Tages-Check-in
+
+Kurz in eigenen Worten:
+- Was steht heute an, was du mir mitteilen willst?
+- Welche Entscheidung oder Priorität ist neu?
+- Gibt es etwas, das ich mir für dein persönliches Wiki merken soll?
+
+(Dann **Senden** — Learnings werden wie im normalen Chat extrahiert.)`;
+
 function toolPillLabel(raw: string): string {
   const cleaned = raw.replace(/_/g, " ").trim();
   if (!cleaned) return raw;
@@ -22,6 +31,7 @@ function toolPillLabel(raw: string): string {
 
 export function ChatPage() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const {
     sessions,
@@ -65,6 +75,11 @@ export function ChatPage() {
       setInput(draft);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    if (searchParams.get("daily_checkin") !== "1") return;
+    setInput((prev) => (prev.trim() ? prev : DAILY_CHECKIN_PROMPT));
+  }, [searchParams]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -167,6 +182,23 @@ export function ChatPage() {
           >
             Neue Konversation
           </button>
+          <Link
+            to="/chat?daily_checkin=1"
+            data-testid="chat-daily-checkin-link"
+            style={{
+              display: "block",
+              marginTop: "0.45rem",
+              padding: "0.45rem 0.5rem",
+              fontSize: "0.82rem",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+              textDecoration: "none",
+              textAlign: "center",
+            }}
+          >
+            Daily Check-in
+          </Link>
         </div>
         <div
           style={{
@@ -207,7 +239,9 @@ export function ChatPage() {
                     position: "relative",
                     marginBottom: 4,
                     borderRadius: 6,
-                    borderLeft: active ? "3px solid var(--accent)" : "3px solid transparent",
+                    borderLeft: active
+                      ? "3px solid hsl(var(--ds-color-yellow-accent))"
+                      : "3px solid transparent",
                     background: active ? "var(--accent-soft)" : "transparent",
                   }}
                 >
@@ -412,8 +446,9 @@ export function ChatPage() {
                         maxWidth: "85%",
                         padding: "0.55rem 0.75rem",
                         borderRadius: 12,
-                        background: "var(--accent)",
-                        color: "var(--accent-foreground)",
+                        background: "var(--accent-soft)",
+                        color: "var(--ink)",
+                        border: "1px solid hsl(var(--ds-color-yellow-accent) / 0.28)",
                         fontSize: "0.92rem",
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
@@ -578,11 +613,11 @@ export function ChatPage() {
                 border: "none",
                 borderRadius: 8,
                 background:
-                  isBusy || !input.trim() ? "var(--muted)" : "var(--accent)",
+                  isBusy || !input.trim() ? "var(--muted)" : "var(--co-btn-primary-bg)",
                 color:
                   isBusy || !input.trim()
                     ? "var(--surface)"
-                    : "var(--accent-foreground)",
+                    : "var(--co-btn-primary-fg)",
                 fontWeight: 600,
                 alignSelf: "flex-end",
               }}

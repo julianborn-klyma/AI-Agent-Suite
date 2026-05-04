@@ -241,9 +241,13 @@ Deno.test({
     const sql = postgres(url, { max: 2 });
     const uid = crypto.randomUUID();
     try {
+      const tidRows = await sql`
+        SELECT id::text AS id FROM public.cos_tenants WHERE slug = 'klyma' LIMIT 1
+      ` as { id: string }[];
+      const tid = tidRows[0]!.id;
       await sql`
-        INSERT INTO cos_users (id, email, name, role)
-        VALUES (${uid}::uuid, 'onb-api-cmp@test.local', 'AB', 'member')
+        INSERT INTO cos_users (id, email, name, role, tenant_id)
+        VALUES (${uid}::uuid, 'onb-api-cmp@test.local', 'AB', 'member', ${tid}::uuid)
       `;
       const db = createPostgresDatabaseClient(sql);
       const llm = new FakeLlm();
@@ -264,12 +268,22 @@ Deno.test({
           headers: authHeader(token),
         });
         assertEquals(res.status, 200);
-        const body = await res.json() as { completed: boolean };
+        const body = await res.json() as {
+          completed: boolean;
+          personal_wiki_seed?: boolean;
+        };
         assertEquals(body.completed, true);
+        assertEquals(body.personal_wiki_seed, true);
+        const wikiCount = await sql`
+          SELECT count(*)::int AS c FROM app.wiki_pages
+          WHERE tenant_id = ${tid}::uuid AND owner_user_id = ${uid}::uuid
+        ` as { c: number }[];
+        assertEquals(wikiCount[0]!.c >= 1, true);
       } finally {
         shutdown();
       }
     } finally {
+      await sql`DELETE FROM app.wiki_pages WHERE owner_user_id = ${uid}::uuid`;
       await sql`DELETE FROM cos_user_contexts WHERE user_id = ${uid}::uuid`;
       await sql`DELETE FROM cos_users WHERE id = ${uid}::uuid`;
       await sql.end({ timeout: 5 });

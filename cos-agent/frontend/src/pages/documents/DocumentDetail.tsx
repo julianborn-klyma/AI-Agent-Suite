@@ -316,8 +316,8 @@ export function DocumentDetailPage() {
                 padding: "0.5rem 0.85rem",
                 borderRadius: 8,
                 border: "none",
-                background: "var(--accent)",
-                color: "var(--accent-foreground)",
+                background: "var(--co-btn-primary-bg)",
+                color: "var(--co-btn-primary-fg)",
                 fontWeight: 600,
                 cursor: isLoading ? "wait" : "pointer",
               }}

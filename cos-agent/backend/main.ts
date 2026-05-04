@@ -12,6 +12,7 @@ import { AnthropicClient } from "./services/llm/anthropicClient.ts";
 import { OAuthService } from "./services/oauthService.ts";
 import { ToolExecutor } from "./services/tools/toolExecutor.ts";
 import { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
+import { PersonalWikiEnrichmentService } from "./services/personalWikiEnrichmentService.ts";
 import { BriefingDelivery } from "./services/briefingDelivery.ts";
 import { TaskQueueService } from "./services/taskQueueService.ts";
 import { PasswordService } from "./services/passwordService.ts";
@@ -46,6 +47,12 @@ const weeklyConsolidatorService = new WeeklyConsolidatorService(
   llm,
   learningService,
 );
+const personalWikiEnrichmentService = new PersonalWikiEnrichmentService(
+  db,
+  sql,
+  llm,
+  toolExecutor,
+);
 const driveSyncService = new DriveSyncService(
   db,
   llm,
@@ -77,6 +84,7 @@ const deps = {
   emailStyleService,
   emailCategorizationService,
   weeklyConsolidatorService,
+  personalWikiEnrichmentService,
   driveSyncService,
   taskQueueService,
   passwordService,

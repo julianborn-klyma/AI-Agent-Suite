@@ -129,7 +129,7 @@ export function EmailStylePage() {
         <div
           style={{
             ...card,
-            borderColor: "var(--accent)",
+            borderColor: "hsl(var(--ds-color-focus))",
             color: "var(--text)",
             marginTop: "1rem",
           }}
@@ -148,7 +148,7 @@ export function EmailStylePage() {
         </div>
         <button
           type="button"
-          className="co-btn co-btn-primary"
+          className="co-btn co-btn--primary"
           disabled={learnM.isPending}
           onClick={() => {
             setBanner(null);
@@ -253,7 +253,7 @@ export function EmailStylePage() {
         />
         <button
           type="button"
-          className="co-btn co-btn-primary"
+          className="co-btn co-btn--primary"
           disabled={draftM.isPending}
           onClick={() => {
             setDraftResult(null);

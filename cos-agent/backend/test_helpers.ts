@@ -12,12 +12,14 @@ import type { LlmClient } from "./services/llm/llmTypes.ts";
 import { OAuthService } from "./services/oauthService.ts";
 import type { ToolExecutor } from "./services/tools/toolExecutor.ts";
 import { WeeklyConsolidatorService } from "./services/weeklyConsolidatorService.ts";
+import { PersonalWikiEnrichmentService } from "./services/personalWikiEnrichmentService.ts";
 import { BriefingDelivery } from "./services/briefingDelivery.ts";
 import { TaskQueueService } from "./services/taskQueueService.ts";
 import { PasswordService } from "./services/passwordService.ts";
 import { AuditService } from "./services/auditService.ts";
 import { TenantService } from "./services/tenantService.ts";
 import { resolveTestDatabaseUrl } from "./test_database_url.ts";
+import type postgres from "postgres";
 
 const TEST_SERVICE_TOKEN = "test-service-token-32-chars-minimum!!";
 const TEST_JWT_SECRET = "test-jwt-secret-32-chars-minimum!!!!";
@@ -43,6 +45,7 @@ export function createAgentAndDocument(
 /** Ergänzt Test-Deps um Cron-/Schedule-Services (optional in Einzeltests). */
 export function createJobServices(d: {
   db: DatabaseClient;
+  sql: postgres.Sql;
   llm: LlmClient;
   toolExecutor: ToolExecutor;
   documentService: DocumentService;
@@ -51,6 +54,7 @@ export function createJobServices(d: {
   | "emailStyleService"
   | "emailCategorizationService"
   | "weeklyConsolidatorService"
+  | "personalWikiEnrichmentService"
   | "driveSyncService"
 > {
   const learningService = new LearningService(d.db, d.llm);
@@ -67,6 +71,12 @@ export function createJobServices(d: {
       d.db,
       d.llm,
       learningService,
+    ),
+    personalWikiEnrichmentService: new PersonalWikiEnrichmentService(
+      d.db,
+      d.sql,
+      d.llm,
+      d.toolExecutor,
     ),
     driveSyncService: new DriveSyncService(
       d.db,
@@ -171,7 +181,13 @@ export async function startTestServer(
       const oauthService = core.oauthService ??
         new OAuthService(core.db, env, tenantService);
       const withOauth = { ...core, oauthService, tenantService } as AppDependencies;
-      const jobs = createJobServices(withOauth);
+      const jobs = createJobServices({
+        db: core.db,
+        sql: core.sql,
+        llm: core.llm,
+        toolExecutor: core.toolExecutor,
+        documentService: core.documentService,
+      });
       const learningForTasks = new LearningService(core.db, core.llm);
       const taskQueueService =
         core.taskQueueService ??

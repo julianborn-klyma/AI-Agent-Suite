@@ -93,8 +93,8 @@ export function DocumentListPage() {
             padding: "0.45rem 0.9rem",
             borderRadius: 8,
             border: "1px solid var(--border)",
-            background: "var(--accent)",
-            color: "var(--accent-foreground)",
+            background: "var(--co-btn-primary-bg)",
+            color: "var(--co-btn-primary-fg)",
             fontWeight: 600,
             cursor: "pointer",
           }}
@@ -135,7 +135,7 @@ export function DocumentListPage() {
                   <td style={{ padding: "0.5rem 0.75rem" }}>
                     <Link
                       to={`/documents/${d.id}`}
-                      style={{ color: "var(--accent)", fontWeight: 500 }}
+                      style={{ color: "var(--link)", fontWeight: 500 }}
                     >
                       {d.name}
                     </Link>
@@ -303,8 +303,8 @@ export function DocumentListPage() {
                     padding: "0.4rem 0.75rem",
                     borderRadius: 6,
                     border: "none",
-                    background: "var(--accent)",
-                    color: "var(--accent-foreground)",
+                    background: "var(--co-btn-primary-bg)",
+                    color: "var(--co-btn-primary-fg)",
                     fontWeight: 600,
                     cursor: uploading ? "wait" : "pointer",
                   }}

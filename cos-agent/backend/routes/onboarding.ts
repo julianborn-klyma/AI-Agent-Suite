@@ -3,6 +3,8 @@ import type { AppEnv } from "../config/env.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { jsonResponse } from "./json.ts";
 import { OnboardingService } from "../services/onboardingService.ts";
+import { ensurePersonalWikiPages } from "../services/personalWikiSeed.ts";
+import { withWorkspaceTx } from "../services/workspaceService.ts";
 
 function unauthorized(): Response {
   return new Response("Unauthorized", { status: 401 });
@@ -37,7 +39,17 @@ export async function handleOnboardingCompletePost(
   const userId = await requireAuth(req, env);
   if (!userId) return unauthorized();
   await svc(deps).completeOnboarding(userId, req);
-  return jsonResponse({ completed: true });
+  const seeded = await withWorkspaceTx(deps.sql, userId, async (tx, tenantId) => {
+    await ensurePersonalWikiPages(tx, tenantId, userId);
+    return true;
+  });
+  if (!seeded.ok) {
+    return jsonResponse(
+      { completed: true, personal_wiki_seed: false, error: seeded.message },
+      { status: 200 },
+    );
+  }
+  return jsonResponse({ completed: true, personal_wiki_seed: true });
 }
 
 export async function handleOnboardingProfilePost(
