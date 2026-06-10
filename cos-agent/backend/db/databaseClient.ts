@@ -734,6 +734,8 @@ export interface DatabaseClient {
     resolvedOnly?: boolean,
   ): Promise<BrainConflict[]>;
 
+  getBrainConflictById(id: string): Promise<BrainConflict | null>;
+
   resolveBrainConflict(id: string, resolvedBy: string): Promise<void>;
 
   conflictExistsBetween(entryAId: string, entryBId: string): Promise<boolean>;
@@ -3151,6 +3153,17 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
     },
 
     // ── Brain Conflicts ───────────────────────────────────────────────────────
+
+    async getBrainConflictById(id) {
+      const rows = await sql`
+        SELECT id::text, project_id::text, entry_a_id::text, entry_b_id::text,
+               conflict_description, resolved, resolved_by::text, resolved_at, created_at
+        FROM brain_conflicts
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      `;
+      return (rows[0] as BrainConflict) ?? null;
+    },
 
     async insertBrainConflict(params) {
       const rows = await sql`

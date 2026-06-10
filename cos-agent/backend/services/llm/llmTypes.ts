@@ -34,6 +34,11 @@ export interface LlmClient {
   chat(req: LlmRequest): Promise<LlmResponse>;
 }
 
+/** Generates a dense vector embedding for a text string. */
+export interface EmbeddingClient {
+  embed(text: string): Promise<number[]>;
+}
+
 export class LlmClientError extends Error {
   readonly status: number;
   readonly bodySnippet: string;
