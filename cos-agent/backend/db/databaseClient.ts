@@ -152,6 +152,106 @@ export type GetLearningsOptions = {
   since?: Date;
 };
 
+// ── Brain & Firm Knowledge System ─────────────────────────────────────────────
+
+export type BrainMemberRole = "owner" | "knowledge_owner" | "member";
+
+export type BrainProject = {
+  id: string;
+  tenant_id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type BrainProjectMember = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: BrainMemberRole;
+  invited_by: string | null;
+  created_at: Date;
+};
+
+export type BrainEntryType =
+  | "fact"
+  | "decision"
+  | "preference"
+  | "context"
+  | "process";
+
+export type BrainEntry = {
+  id: string;
+  project_id: string;
+  tenant_id: string;
+  created_by: string;
+  type: BrainEntryType;
+  content: string;
+  source: string | null;
+  confidence: number;
+  tags: string[];
+  expires_at: Date | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type FirmInsightCategory =
+  | "person"
+  | "company"
+  | "project"
+  | "decision"
+  | "pattern"
+  | "relationship";
+
+export type FirmInsight = {
+  id: string;
+  tenant_id: string;
+  source_project_id: string | null;
+  source_user_id: string | null;
+  source_session_id: string | null;
+  category: FirmInsightCategory;
+  content: string;
+  confidence: number;
+  tags: string[];
+  is_active: boolean;
+  admin_suppressed: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type BrainConflict = {
+  id: string;
+  project_id: string;
+  entry_a_id: string;
+  entry_b_id: string;
+  conflict_description: string | null;
+  resolved: boolean;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  created_at: Date;
+};
+
+export class BrainForbiddenError extends Error {
+  constructor(message = "Kein Zugriff auf dieses Brain-Projekt") {
+    super(message);
+    this.name = "BrainForbiddenError";
+  }
+}
+
+export class BrainNotFoundError extends Error {
+  constructor(message = "Eintrag nicht gefunden") {
+    super(message);
+    this.name = "BrainNotFoundError";
+  }
+}
+
+// ── End Brain types ───────────────────────────────────────────────────────────
+
 export class LearningOwnershipError extends Error {
   constructor(message = "Learning nicht gefunden oder keine Berechtigung") {
     super(message);
@@ -524,6 +624,162 @@ export interface DatabaseClient {
   ): Promise<void>;
 
   getTenantForUser(userId: string): Promise<Tenant | null>;
+
+  // ── Brain Projects ──────────────────────────────────────────────────────────
+  insertBrainProject(params: {
+    tenantId: string;
+    ownerId: string;
+    name: string;
+    description?: string | null;
+    color?: string;
+  }): Promise<BrainProject>;
+
+  getBrainProjectById(id: string): Promise<BrainProject | null>;
+
+  getBrainProjectsForUser(
+    userId: string,
+    tenantId: string,
+  ): Promise<BrainProject[]>;
+
+  updateBrainProject(
+    id: string,
+    params: { name?: string; description?: string | null; color?: string; is_active?: boolean },
+  ): Promise<BrainProject>;
+
+  // ── Brain Members ───────────────────────────────────────────────────────────
+  getBrainProjectMember(
+    projectId: string,
+    userId: string,
+  ): Promise<BrainProjectMember | null>;
+
+  getBrainProjectMembers(projectId: string): Promise<
+    (BrainProjectMember & { user_name: string; user_email: string })[]
+  >;
+
+  insertBrainProjectMember(params: {
+    projectId: string;
+    userId: string;
+    role: BrainMemberRole;
+    invitedBy: string | null;
+  }): Promise<BrainProjectMember>;
+
+  updateBrainProjectMemberRole(
+    projectId: string,
+    userId: string,
+    role: BrainMemberRole,
+  ): Promise<void>;
+
+  removeBrainProjectMember(projectId: string, userId: string): Promise<void>;
+
+  // ── Brain Entries ───────────────────────────────────────────────────────────
+  insertBrainEntry(params: {
+    projectId: string;
+    tenantId: string;
+    createdBy: string;
+    type: BrainEntryType;
+    content: string;
+    source?: string | null;
+    confidence?: number;
+    tags?: string[];
+    expiresAt?: Date | null;
+    embedding?: number[] | null;
+  }): Promise<BrainEntry>;
+
+  getBrainEntryById(id: string): Promise<BrainEntry | null>;
+
+  getBrainEntriesForProject(
+    projectId: string,
+    options?: { type?: BrainEntryType; activeOnly?: boolean; limit?: number },
+  ): Promise<BrainEntry[]>;
+
+  /** Full-text search + optional vector similarity (hybrid). */
+  searchBrainEntries(params: {
+    projectId: string;
+    query: string;
+    embedding?: number[] | null;
+    limit?: number;
+  }): Promise<BrainEntry[]>;
+
+  /** Kandidaten für Konflikt-Erkennung: ähnliche Einträge per Vektor. */
+  findSimilarBrainEntries(params: {
+    projectId: string;
+    embedding: number[];
+    threshold?: number;
+    limit?: number;
+  }): Promise<BrainEntry[]>;
+
+  updateBrainEntry(
+    id: string,
+    params: {
+      content?: string;
+      source?: string | null;
+      confidence?: number;
+      tags?: string[];
+      expiresAt?: Date | null;
+      embedding?: number[] | null;
+      is_active?: boolean;
+    },
+  ): Promise<BrainEntry>;
+
+  // ── Brain Conflicts ─────────────────────────────────────────────────────────
+  insertBrainConflict(params: {
+    projectId: string;
+    entryAId: string;
+    entryBId: string;
+    conflictDescription?: string | null;
+  }): Promise<BrainConflict>;
+
+  getBrainConflictsForProject(
+    projectId: string,
+    resolvedOnly?: boolean,
+  ): Promise<BrainConflict[]>;
+
+  resolveBrainConflict(id: string, resolvedBy: string): Promise<void>;
+
+  conflictExistsBetween(entryAId: string, entryBId: string): Promise<boolean>;
+
+  // ── Firm Insights ───────────────────────────────────────────────────────────
+  insertFirmInsight(params: {
+    tenantId: string;
+    sourceProjectId?: string | null;
+    sourceUserId?: string | null;
+    sourceSessionId?: string | null;
+    category: FirmInsightCategory;
+    content: string;
+    confidence?: number;
+    tags?: string[];
+    embedding?: number[] | null;
+  }): Promise<FirmInsight>;
+
+  /** Semantische Suche für Context-Injection. */
+  searchFirmInsights(params: {
+    tenantId: string;
+    embedding: number[];
+    limit?: number;
+  }): Promise<FirmInsight[]>;
+
+  /** Exakte oder nahe Duplikat-Prüfung vor Insert (cosine > threshold). */
+  findSimilarFirmInsights(params: {
+    tenantId: string;
+    embedding: number[];
+    threshold?: number;
+    limit?: number;
+  }): Promise<FirmInsight[]>;
+
+  updateFirmInsightConfidence(id: string, confidence: number): Promise<void>;
+
+  listFirmInsights(params: {
+    tenantId: string;
+    category?: FirmInsightCategory;
+    sourceProjectId?: string | null;
+    adminSuppressed?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<FirmInsight[]>;
+
+  updateFirmInsightSuppression(id: string, suppressed: boolean): Promise<void>;
+
+  deleteFirmInsight(id: string): Promise<void>;
 }
 
 type PgSql = ReturnType<typeof postgres>;
@@ -2645,6 +2901,407 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
         LIMIT 1
       ` as TenantSqlRow[];
       return rows[0] ? mapTenantRow(rows[0]) : null;
+    },
+
+    // ── Brain Projects ────────────────────────────────────────────────────────
+
+    async insertBrainProject(params) {
+      const rows = await sql`
+        INSERT INTO brain_projects (tenant_id, owner_id, name, description, color)
+        VALUES (
+          ${params.tenantId}::uuid,
+          ${params.ownerId}::uuid,
+          ${params.name},
+          ${params.description ?? null},
+          ${params.color ?? "#6366f1"}
+        )
+        RETURNING
+          id::text, tenant_id::text, owner_id::text, name, description,
+          color, is_active, created_at, updated_at
+      `;
+      return rows[0] as BrainProject;
+    },
+
+    async getBrainProjectById(id) {
+      const rows = await sql`
+        SELECT id::text, tenant_id::text, owner_id::text, name, description,
+               color, is_active, created_at, updated_at
+        FROM brain_projects
+        WHERE id = ${id}::uuid AND is_active = true
+        LIMIT 1
+      `;
+      return (rows[0] as BrainProject) ?? null;
+    },
+
+    async getBrainProjectsForUser(userId, tenantId) {
+      return await sql`
+        SELECT
+          p.id::text, p.tenant_id::text, p.owner_id::text, p.name,
+          p.description, p.color, p.is_active, p.created_at, p.updated_at
+        FROM brain_projects p
+        INNER JOIN brain_project_members m ON m.project_id = p.id
+        WHERE m.user_id = ${userId}::uuid
+          AND p.tenant_id = ${tenantId}::uuid
+          AND p.is_active = true
+        ORDER BY p.created_at DESC
+      ` as BrainProject[];
+    },
+
+    async updateBrainProject(id, params) {
+      const rows = await sql`
+        UPDATE brain_projects
+        SET
+          name        = COALESCE(${params.name ?? null}, name),
+          description = CASE WHEN ${params.description !== undefined} THEN ${params.description ?? null} ELSE description END,
+          color       = COALESCE(${params.color ?? null}, color),
+          is_active   = COALESCE(${params.is_active ?? null}, is_active),
+          updated_at  = NOW()
+        WHERE id = ${id}::uuid
+        RETURNING id::text, tenant_id::text, owner_id::text, name, description,
+                  color, is_active, created_at, updated_at
+      `;
+      return rows[0] as BrainProject;
+    },
+
+    // ── Brain Members ─────────────────────────────────────────────────────────
+
+    async getBrainProjectMember(projectId, userId) {
+      const rows = await sql`
+        SELECT id::text, project_id::text, user_id::text, role,
+               invited_by::text, created_at
+        FROM brain_project_members
+        WHERE project_id = ${projectId}::uuid AND user_id = ${userId}::uuid
+        LIMIT 1
+      `;
+      return (rows[0] as BrainProjectMember) ?? null;
+    },
+
+    async getBrainProjectMembers(projectId) {
+      return await sql`
+        SELECT
+          m.id::text, m.project_id::text, m.user_id::text, m.role,
+          m.invited_by::text, m.created_at,
+          u.name  AS user_name,
+          u.email AS user_email
+        FROM brain_project_members m
+        INNER JOIN cos_users u ON u.id = m.user_id
+        WHERE m.project_id = ${projectId}::uuid
+        ORDER BY m.created_at ASC
+      ` as (BrainProjectMember & { user_name: string; user_email: string })[];
+    },
+
+    async insertBrainProjectMember(params) {
+      const rows = await sql`
+        INSERT INTO brain_project_members (project_id, user_id, role, invited_by)
+        VALUES (
+          ${params.projectId}::uuid,
+          ${params.userId}::uuid,
+          ${params.role},
+          ${params.invitedBy ? sql`${params.invitedBy}::uuid` : sql`NULL`}
+        )
+        RETURNING id::text, project_id::text, user_id::text, role,
+                  invited_by::text, created_at
+      `;
+      return rows[0] as BrainProjectMember;
+    },
+
+    async updateBrainProjectMemberRole(projectId, userId, role) {
+      await sql`
+        UPDATE brain_project_members
+        SET role = ${role}
+        WHERE project_id = ${projectId}::uuid AND user_id = ${userId}::uuid
+      `;
+    },
+
+    async removeBrainProjectMember(projectId, userId) {
+      await sql`
+        DELETE FROM brain_project_members
+        WHERE project_id = ${projectId}::uuid AND user_id = ${userId}::uuid
+      `;
+    },
+
+    // ── Brain Entries ─────────────────────────────────────────────────────────
+
+    async insertBrainEntry(params) {
+      const rows = await sql`
+        INSERT INTO brain_entries (
+          project_id, tenant_id, created_by, type, content, source,
+          confidence, tags, expires_at, embedding
+        ) VALUES (
+          ${params.projectId}::uuid,
+          ${params.tenantId}::uuid,
+          ${params.createdBy}::uuid,
+          ${params.type},
+          ${params.content},
+          ${params.source ?? null},
+          ${params.confidence ?? 1.0},
+          ${params.tags ?? []},
+          ${params.expiresAt ?? null},
+          ${params.embedding ? sql`${JSON.stringify(params.embedding)}::vector` : sql`NULL`}
+        )
+        RETURNING
+          id::text, project_id::text, tenant_id::text, created_by::text,
+          type, content, source, confidence, tags, expires_at,
+          is_active, created_at, updated_at
+      `;
+      return rows[0] as BrainEntry;
+    },
+
+    async getBrainEntryById(id) {
+      const rows = await sql`
+        SELECT id::text, project_id::text, tenant_id::text, created_by::text,
+               type, content, source, confidence, tags, expires_at,
+               is_active, created_at, updated_at
+        FROM brain_entries
+        WHERE id = ${id}::uuid
+        LIMIT 1
+      `;
+      return (rows[0] as BrainEntry) ?? null;
+    },
+
+    async getBrainEntriesForProject(projectId, options) {
+      const activeOnly = options?.activeOnly ?? true;
+      const limit = options?.limit ?? 200;
+      const type = options?.type ?? null;
+      return await sql`
+        SELECT id::text, project_id::text, tenant_id::text, created_by::text,
+               type, content, source, confidence, tags, expires_at,
+               is_active, created_at, updated_at
+        FROM brain_entries
+        WHERE project_id = ${projectId}::uuid
+          AND (${!activeOnly} OR is_active = true)
+          AND (${type} IS NULL OR type = ${type})
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      ` as BrainEntry[];
+    },
+
+    async searchBrainEntries(params) {
+      const limit = params.limit ?? 10;
+      if (params.embedding) {
+        return await sql`
+          SELECT id::text, project_id::text, tenant_id::text, created_by::text,
+                 type, content, source, confidence, tags, expires_at,
+                 is_active, created_at, updated_at
+          FROM brain_entries
+          WHERE project_id = ${params.projectId}::uuid
+            AND is_active = true
+            AND (expires_at IS NULL OR expires_at > NOW())
+          ORDER BY embedding <=> ${JSON.stringify(params.embedding)}::vector
+          LIMIT ${limit}
+        ` as BrainEntry[];
+      }
+      return await sql`
+        SELECT id::text, project_id::text, tenant_id::text, created_by::text,
+               type, content, source, confidence, tags, expires_at,
+               is_active, created_at, updated_at
+        FROM brain_entries
+        WHERE project_id = ${params.projectId}::uuid
+          AND is_active = true
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND to_tsvector('german', content) @@ plainto_tsquery('german', ${params.query})
+        ORDER BY ts_rank(to_tsvector('german', content), plainto_tsquery('german', ${params.query})) DESC
+        LIMIT ${limit}
+      ` as BrainEntry[];
+    },
+
+    async findSimilarBrainEntries(params) {
+      const threshold = params.threshold ?? 0.8;
+      const limit = params.limit ?? 20;
+      return await sql`
+        SELECT id::text, project_id::text, tenant_id::text, created_by::text,
+               type, content, source, confidence, tags, expires_at,
+               is_active, created_at, updated_at
+        FROM brain_entries
+        WHERE project_id = ${params.projectId}::uuid
+          AND is_active = true
+          AND embedding IS NOT NULL
+          AND (1 - (embedding <=> ${JSON.stringify(params.embedding)}::vector)) >= ${threshold}
+        ORDER BY embedding <=> ${JSON.stringify(params.embedding)}::vector
+        LIMIT ${limit}
+      ` as BrainEntry[];
+    },
+
+    async updateBrainEntry(id, params) {
+      const rows = await sql`
+        UPDATE brain_entries
+        SET
+          content    = COALESCE(${params.content ?? null}, content),
+          source     = CASE WHEN ${params.source !== undefined} THEN ${params.source ?? null} ELSE source END,
+          confidence = COALESCE(${params.confidence ?? null}, confidence),
+          tags       = COALESCE(${params.tags ?? null}, tags),
+          expires_at = CASE WHEN ${params.expiresAt !== undefined} THEN ${params.expiresAt ?? null} ELSE expires_at END,
+          is_active  = COALESCE(${params.is_active ?? null}, is_active),
+          updated_at = NOW()
+        WHERE id = ${id}::uuid
+        RETURNING id::text, project_id::text, tenant_id::text, created_by::text,
+                  type, content, source, confidence, tags, expires_at,
+                  is_active, created_at, updated_at
+      `;
+      if (params.embedding !== undefined) {
+        const vec = params.embedding;
+        await sql`
+          UPDATE brain_entries
+          SET embedding = ${vec ? sql`${JSON.stringify(vec)}::vector` : sql`NULL`}
+          WHERE id = ${id}::uuid
+        `;
+      }
+      return rows[0] as BrainEntry;
+    },
+
+    // ── Brain Conflicts ───────────────────────────────────────────────────────
+
+    async insertBrainConflict(params) {
+      const rows = await sql`
+        INSERT INTO brain_conflicts (project_id, entry_a_id, entry_b_id, conflict_description)
+        VALUES (
+          ${params.projectId}::uuid,
+          ${params.entryAId}::uuid,
+          ${params.entryBId}::uuid,
+          ${params.conflictDescription ?? null}
+        )
+        ON CONFLICT (entry_a_id, entry_b_id) DO UPDATE
+          SET conflict_description = EXCLUDED.conflict_description
+        RETURNING id::text, project_id::text, entry_a_id::text, entry_b_id::text,
+                  conflict_description, resolved, resolved_by::text, resolved_at, created_at
+      `;
+      return rows[0] as BrainConflict;
+    },
+
+    async getBrainConflictsForProject(projectId, resolvedOnly) {
+      const resolved = resolvedOnly ?? false;
+      return await sql`
+        SELECT id::text, project_id::text, entry_a_id::text, entry_b_id::text,
+               conflict_description, resolved, resolved_by::text, resolved_at, created_at
+        FROM brain_conflicts
+        WHERE project_id = ${projectId}::uuid
+          AND resolved = ${resolved}
+        ORDER BY created_at DESC
+      ` as BrainConflict[];
+    },
+
+    async resolveBrainConflict(id, resolvedBy) {
+      await sql`
+        UPDATE brain_conflicts
+        SET resolved = true, resolved_by = ${resolvedBy}::uuid, resolved_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
+    },
+
+    async conflictExistsBetween(entryAId, entryBId) {
+      const rows = await sql`
+        SELECT 1 FROM brain_conflicts
+        WHERE (entry_a_id = ${entryAId}::uuid AND entry_b_id = ${entryBId}::uuid)
+           OR (entry_a_id = ${entryBId}::uuid AND entry_b_id = ${entryAId}::uuid)
+        LIMIT 1
+      `;
+      return rows.length > 0;
+    },
+
+    // ── Firm Insights ─────────────────────────────────────────────────────────
+
+    async insertFirmInsight(params) {
+      const rows = await sql`
+        INSERT INTO firm_insights (
+          tenant_id, source_project_id, source_user_id, source_session_id,
+          category, content, confidence, tags, embedding
+        ) VALUES (
+          ${params.tenantId}::uuid,
+          ${params.sourceProjectId ? sql`${params.sourceProjectId}::uuid` : sql`NULL`},
+          ${params.sourceUserId ? sql`${params.sourceUserId}::uuid` : sql`NULL`},
+          ${params.sourceSessionId ?? null},
+          ${params.category},
+          ${params.content},
+          ${params.confidence ?? 0.8},
+          ${params.tags ?? []},
+          ${params.embedding ? sql`${JSON.stringify(params.embedding)}::vector` : sql`NULL`}
+        )
+        RETURNING
+          id::text, tenant_id::text, source_project_id::text, source_user_id::text,
+          source_session_id, category, content, confidence, tags,
+          is_active, admin_suppressed, created_at, updated_at
+      `;
+      return rows[0] as FirmInsight;
+    },
+
+    async searchFirmInsights(params) {
+      const limit = params.limit ?? 8;
+      return await sql`
+        SELECT
+          id::text, tenant_id::text, source_project_id::text, source_user_id::text,
+          source_session_id, category, content, confidence, tags,
+          is_active, admin_suppressed, created_at, updated_at
+        FROM firm_insights
+        WHERE tenant_id = ${params.tenantId}::uuid
+          AND is_active = true
+          AND admin_suppressed = false
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> ${JSON.stringify(params.embedding)}::vector
+        LIMIT ${limit}
+      ` as FirmInsight[];
+    },
+
+    async findSimilarFirmInsights(params) {
+      const threshold = params.threshold ?? 0.9;
+      const limit = params.limit ?? 5;
+      return await sql`
+        SELECT
+          id::text, tenant_id::text, source_project_id::text, source_user_id::text,
+          source_session_id, category, content, confidence, tags,
+          is_active, admin_suppressed, created_at, updated_at
+        FROM firm_insights
+        WHERE tenant_id = ${params.tenantId}::uuid
+          AND is_active = true
+          AND embedding IS NOT NULL
+          AND (1 - (embedding <=> ${JSON.stringify(params.embedding)}::vector)) >= ${threshold}
+        ORDER BY embedding <=> ${JSON.stringify(params.embedding)}::vector
+        LIMIT ${limit}
+      ` as FirmInsight[];
+    },
+
+    async updateFirmInsightConfidence(id, confidence) {
+      await sql`
+        UPDATE firm_insights
+        SET confidence = ${confidence}, updated_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
+    },
+
+    async listFirmInsights(params) {
+      const limit = params.limit ?? 100;
+      const offset = params.offset ?? 0;
+      const category = params.category ?? null;
+      const adminSuppressed = params.adminSuppressed ?? null;
+      const sourceProjectId = params.sourceProjectId ?? null;
+      return await sql`
+        SELECT
+          id::text, tenant_id::text, source_project_id::text, source_user_id::text,
+          source_session_id, category, content, confidence, tags,
+          is_active, admin_suppressed, created_at, updated_at
+        FROM firm_insights
+        WHERE tenant_id = ${params.tenantId}::uuid
+          AND (${category} IS NULL OR category = ${category})
+          AND (${adminSuppressed} IS NULL OR admin_suppressed = ${adminSuppressed})
+          AND (${sourceProjectId}::uuid IS NULL OR source_project_id = ${sourceProjectId}::uuid)
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      ` as FirmInsight[];
+    },
+
+    async updateFirmInsightSuppression(id, suppressed) {
+      await sql`
+        UPDATE firm_insights
+        SET admin_suppressed = ${suppressed}, updated_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
+    },
+
+    async deleteFirmInsight(id) {
+      await sql`
+        UPDATE firm_insights SET is_active = false, updated_at = NOW()
+        WHERE id = ${id}::uuid
+      `;
     },
   };
 }

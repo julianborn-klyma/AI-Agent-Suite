@@ -61,8 +61,7 @@ CREATE TABLE IF NOT EXISTS firm_insights (
   source_project_id UUID        REFERENCES brain_projects(id) ON DELETE SET NULL,
   source_user_id    UUID        REFERENCES cos_users(id) ON DELETE SET NULL,
   source_session_id TEXT,
-  -- person | company | project | decision | pattern | relationship
-  category          TEXT        NOT NULL,
+  category          TEXT        NOT NULL CHECK (category IN ('person', 'company', 'project', 'decision', 'pattern', 'relationship')),
   content           TEXT        NOT NULL,
   confidence        FLOAT       NOT NULL DEFAULT 0.8 CHECK (confidence >= 0 AND confidence <= 1),
   tags              TEXT[]      NOT NULL DEFAULT '{}',
@@ -84,7 +83,8 @@ CREATE TABLE IF NOT EXISTS brain_conflicts (
   resolved             BOOLEAN     NOT NULL DEFAULT false,
   resolved_by          UUID        REFERENCES cos_users(id),
   resolved_at          TIMESTAMPTZ,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entry_a_id, entry_b_id)
 );
 
 -- Projekt-gebundene Chats (rückwärtskompatibel: NULL = globaler Chat ohne Projekt-Context)
