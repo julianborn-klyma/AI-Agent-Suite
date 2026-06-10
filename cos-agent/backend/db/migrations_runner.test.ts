@@ -5,6 +5,10 @@ import { runMigrations } from "./migrate.ts";
 
 const EXPECTED_TABLES = [
   "agent_configs",
+  "brain_conflicts",
+  "brain_entries",
+  "brain_project_members",
+  "brain_projects",
   "cos_audit_log",
   "cos_conversations",
   "cos_document_chunks",
@@ -18,6 +22,7 @@ const EXPECTED_TABLES = [
   "cos_user_contexts",
   "cos_users",
   "cos_task_queue",
+  "firm_insights",
   "schema_migrations",
 ] as const;
 
@@ -36,6 +41,8 @@ const EXPECTED_MIGRATION_FILES = [
   "012_tenants.sql",
   "013_onboarding.sql",
   "014_app_schema_tasks_wiki.sql",
+  "015_personal_wiki_schedule_backfill.sql",
+  "016_brain.sql",
 ] as const;
 
 /** Kern-Tabellen unter Schema app (SaaS-Domäne, tenant_id + RLS). */
@@ -51,7 +58,7 @@ const EXPECTED_APP_TABLES = [
 ] as const;
 
 Deno.test({
-  name: "Migration-Runner — 001–014, schema_migrations, Idempotenz",
+  name: "Migration-Runner — 001–016, schema_migrations, Idempotenz",
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -86,6 +93,15 @@ Deno.test({
           AND column_name = 'onboarding_completed'
       `;
       assertEquals(onboardCol.length, 1);
+
+      const projectIdCol = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'cos_conversations'
+          AND column_name = 'project_id'
+      `;
+      assertEquals(projectIdCol.length, 1, "cos_conversations.project_id fehlt");
 
       const appSchema = await sql`
         SELECT schema_name
