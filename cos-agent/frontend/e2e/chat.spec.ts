@@ -17,8 +17,28 @@ test.describe("Chat Visuals", () => {
           name: "E2E User",
           email: "e2e-user@test.local",
           role: "member",
+          tenant_ui_show_tenant_wiki: false,
         }),
       });
+    });
+
+    await page.route("**/api/chat/models", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          default: "sonnet",
+          models: [
+            { key: "haiku", label: "Claude Haiku 4.5", model_id: "claude-haiku" },
+            { key: "sonnet", label: "Claude Sonnet 4", model_id: "claude-sonnet" },
+            { key: "opus", label: "Claude Opus 4", model_id: "claude-opus" },
+          ],
+        }),
+      });
+    });
+
+    await page.route("**/api/brain/projects", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
 
     await page.route("**/api/chat/sessions", async (route) => {
@@ -48,6 +68,8 @@ test.describe("Chat Visuals", () => {
     });
 
     await page.goto("/chat");
+    await expect(page.getByTestId("chat-model-select")).toBeVisible();
+    await expect(page.getByTestId("chat-model-select")).toHaveValue("sonnet");
     await page.getByTestId("chat-input").fill("Was ist heute wichtig?");
     await page.getByTestId("chat-send").click();
 

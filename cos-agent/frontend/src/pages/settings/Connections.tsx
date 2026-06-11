@@ -201,6 +201,13 @@ export function ConnectionsPanel() {
 
   return (
     <div>
+      <h3
+        className="co-font-display"
+        data-testid="connections-title"
+        style={{ marginTop: 0, marginBottom: "0.75rem" }}
+      >
+        Verbindungen
+      </h3>
       {banner && (
         <div
           role="status"

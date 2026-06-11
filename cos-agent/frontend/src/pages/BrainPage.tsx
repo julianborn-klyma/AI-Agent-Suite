@@ -198,13 +198,13 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function BrainPage() {
+export function BrainPage({ embedded = false }: { embedded?: boolean }) {
   const q = useBrainProjects();
   const [showNew, setShowNew] = useState(false);
 
   if (q.isPending) {
     return (
-      <div style={{ padding: "1.5rem" }}>
+      <div style={{ padding: embedded ? 0 : "1.5rem" }}>
         <p className="co-muted">Laden…</p>
       </div>
     );
@@ -212,7 +212,7 @@ export function BrainPage() {
 
   if (q.error) {
     return (
-      <div style={{ padding: "1.5rem" }}>
+      <div style={{ padding: embedded ? 0 : "1.5rem" }}>
         <p style={{ color: "var(--danger)" }}>
           {q.error instanceof Error ? q.error.message : "Fehler beim Laden"}
         </p>
@@ -223,7 +223,7 @@ export function BrainPage() {
   const projects = q.data ?? [];
 
   return (
-    <div style={{ padding: "1.5rem 0" }}>
+    <div style={{ padding: embedded ? 0 : "1.5rem 0" }} data-testid="brain-page">
       <div
         style={{
           display: "flex",

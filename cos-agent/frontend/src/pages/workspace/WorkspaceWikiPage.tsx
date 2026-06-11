@@ -14,7 +14,7 @@ import { normalizeWikiSlug, wikiSlugHint } from "../../lib/wikiSlug.ts";
 
 const WIKI_STATUSES = ["draft", "approved", "deprecated"] as const;
 
-export function WorkspaceWikiPage() {
+export function WorkspaceWikiPage({ embedded = false }: { embedded?: boolean } = {}) {
   const logged = isLoggedIn();
   const [statusFilter, setStatusFilter] = useState<string>("");
   const pagesQ = useWorkspaceWikiPages(
@@ -69,7 +69,11 @@ export function WorkspaceWikiPage() {
   return (
     <div
       data-testid="wiki-root"
-      style={{ padding: "1.25rem", maxWidth: 1100, margin: "0 auto" }}
+      style={{
+        padding: embedded ? 0 : "1.25rem",
+        maxWidth: 1100,
+        margin: embedded ? 0 : "0 auto",
+      }}
     >
       <h1 className="co-font-display" style={{ fontSize: "1.35rem", marginBottom: "0.35rem" }}>
         Wiki

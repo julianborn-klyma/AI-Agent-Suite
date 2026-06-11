@@ -1,5 +1,6 @@
 import type { AppDependencies } from "../app_deps.ts";
 import type { DatabaseClient } from "../db/databaseClient.ts";
+import { parseChatModelKey } from "./chatModels.ts";
 import { LlmClientError } from "./llm/llmTypes.ts";
 
 const UUID_RE =
@@ -71,6 +72,11 @@ export async function postChat(
       ? o.project_id
       : null;
 
+  const modelParsed = parseChatModelKey(o.model);
+  if (!modelParsed.ok) {
+    return { ok: false, status: 400, error: modelParsed.error };
+  }
+
   const tenant = await deps.db.getTenantForUser(userId);
   const tenantId = tenant?.id ?? null;
 
@@ -81,6 +87,7 @@ export async function postChat(
       message: trimmed,
       tenantId,
       projectId,
+      preferredModel: modelParsed.key,
     });
     return {
       ok: true,
@@ -176,6 +183,8 @@ export type ChatSessionItem = {
   preview: string;
   last_activity: string;
   message_count: number;
+  project_id: string | null;
+  project_name: string | null;
 };
 
 export async function getSessions(
@@ -188,6 +197,8 @@ export async function getSessions(
     preview: r.preview,
     last_activity: r.last_activity.toISOString(),
     message_count: r.message_count,
+    project_id: r.project_id,
+    project_name: r.project_name,
   }));
 }
 

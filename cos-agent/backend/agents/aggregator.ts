@@ -33,6 +33,7 @@ export class AggregatorAgent {
     results: SubAgentResult[];
     context: AgentContext;
     complexity?: "low" | "medium" | "high";
+    preferredChatModel?: string;
   }): Promise<string> {
     const name = params.context.userProfile?.name ?? "dem Nutzer";
     const styleHint =
@@ -48,10 +49,11 @@ export class AggregatorAgent {
     }));
 
     const complexity = params.complexity ?? "medium";
+    const mainModel = params.preferredChatModel ?? CHAT_MODEL;
     const model =
       complexity === "low" && areToolResultsWeak(params.results)
         ? MODEL_IDS.haiku
-        : CHAT_MODEL;
+        : mainModel;
 
     const res = await this.llm.chat({
       model,

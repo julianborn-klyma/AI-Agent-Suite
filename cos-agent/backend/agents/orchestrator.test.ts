@@ -122,13 +122,20 @@ class MultiConfigDb implements DatabaseClient {
   async findUserProfileById(
     userId: string,
   ): Promise<
-    { id: string; name: string; email: string; role: string } | null
+    {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      tenant_ui_show_tenant_wiki: boolean;
+    } | null
   > {
     return {
       id: userId,
       name: "T",
       email: "t@t",
       role: "member",
+      tenant_ui_show_tenant_wiki: false,
     };
   }
 

@@ -308,6 +308,93 @@ Deno.test({
 });
 
 Deno.test({
+  name: "E2E POST /api/chat — ungültiges model → 400",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const url = resolveTestDatabaseUrl();
+    await runMigrations(url);
+    const sql = postgres(url, { max: 2 });
+    const userId = crypto.randomUUID();
+    try {
+      await ensureChatTemplate(sql);
+      await sql`
+        INSERT INTO cos_users (id, email, name) VALUES
+          (${userId}::uuid, 'chat-model@test.local', 'U')
+      `;
+      const db = createPostgresDatabaseClient(sql);
+      const llm = new FakeLlmClient();
+      const toolExecutor = new ToolExecutor();
+      const { agentService, documentService } = createAgentAndDocument(
+        db,
+        llm,
+        toolExecutor,
+      );
+      const { baseUrl, shutdown } = await startTestServer(
+        baseTestEnv({ DATABASE_URL: url }),
+        { db, agentService, documentService, sql, llm, toolExecutor },
+      );
+      try {
+        const token = await mintJwt(userId);
+        const res = await fetch(`${baseUrl}/api/chat`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: "Hallo", model: "gemini-pro" }),
+        });
+        assertEquals(res.status, 400);
+        const body = await res.json() as { error?: string };
+        assertEquals(typeof body.error, "string");
+        assertEquals(body.error?.includes("nicht verfügbar"), true);
+      } finally {
+        shutdown();
+      }
+    } finally {
+      await sql`DELETE FROM cos_users WHERE id = ${userId}::uuid`;
+      await sql.end({ timeout: 5 });
+    }
+  },
+});
+
+Deno.test({
+  name: "E2E GET /api/chat/models — Katalog mit Default sonnet",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const url = resolveTestDatabaseUrl();
+    await runMigrations(url);
+    const sql = postgres(url, { max: 2 });
+    try {
+      const db = createPostgresDatabaseClient(sql);
+      const llm = new FakeLlmClient();
+      const toolExecutor = new ToolExecutor();
+      const { agentService, documentService } = createAgentAndDocument(
+        db,
+        llm,
+        toolExecutor,
+      );
+      const { baseUrl, shutdown } = await startTestServer(
+        baseTestEnv({ DATABASE_URL: url }),
+        { db, agentService, documentService, sql, llm, toolExecutor },
+      );
+      try {
+        const res = await fetch(`${baseUrl}/api/chat/models`);
+        assertEquals(res.status, 200);
+        const body = await res.json() as { default: string; models: unknown[] };
+        assertEquals(body.default, "sonnet");
+        assertEquals(body.models.length, 3);
+      } finally {
+        shutdown();
+      }
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  },
+});
+
+Deno.test({
   name: "E2E DELETE /api/chat/sessions/:id — fremde Session → 403",
   sanitizeOps: false,
   sanitizeResources: false,

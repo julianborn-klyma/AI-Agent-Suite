@@ -26,6 +26,8 @@ export type ChatSessionSummary = {
   preview: string;
   last_activity: Date;
   message_count: number;
+  project_id: string | null;
+  project_name: string | null;
 };
 
 export type Learning = {
@@ -278,6 +280,7 @@ export interface DatabaseClient {
     sessionId: string;
     role: string;
     content: string;
+    projectId?: string | null;
   }): Promise<void>;
   insertLlmCall(params: {
     userId: string;
@@ -384,8 +387,16 @@ export interface DatabaseClient {
   findUserProfileById(
     userId: string,
   ): Promise<
-    { id: string; name: string; email: string; role: string } | null
+    {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      tenant_ui_show_tenant_wiki: boolean;
+    } | null
   >;
+
+  setTenantUiShowWiki(tenantId: string, show: boolean): Promise<void>;
 
   setOnboardingCompleted(userId: string): Promise<void>;
 
@@ -1176,15 +1187,18 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
       sessionId: string;
       role: string;
       content: string;
+      projectId?: string | null;
     }): Promise<void> {
+      const projectId = params.projectId ?? null;
       await sql`
-        INSERT INTO cos_conversations (user_id, session_id, role, content, tool_calls)
+        INSERT INTO cos_conversations (user_id, session_id, role, content, tool_calls, project_id)
         VALUES (
           ${params.userId}::uuid,
           ${params.sessionId}::uuid,
           ${params.role},
           ${params.content},
-          NULL
+          NULL,
+          ${projectId}::uuid
         )
       `;
     },
@@ -1489,20 +1503,41 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
     async findUserProfileById(
       userId: string,
     ): Promise<
-      { id: string; name: string; email: string; role: string } | null
+      {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        tenant_ui_show_tenant_wiki: boolean;
+      } | null
     > {
       const rows = await sql`
-        SELECT id::text, name, email, role
-        FROM cos_users
-        WHERE id = ${userId}::uuid AND is_active = true
+        SELECT
+          u.id::text,
+          u.name,
+          u.email,
+          u.role,
+          COALESCE(t.ui_show_tenant_wiki, false) AS tenant_ui_show_tenant_wiki
+        FROM cos_users u
+        LEFT JOIN cos_tenants t ON t.id = u.tenant_id
+        WHERE u.id = ${userId}::uuid AND u.is_active = true
         LIMIT 1
       ` as {
         id: string;
         name: string;
         email: string;
         role: string;
+        tenant_ui_show_tenant_wiki: boolean;
       }[];
       return rows[0] ?? null;
+    },
+
+    async setTenantUiShowWiki(tenantId: string, show: boolean): Promise<void> {
+      await sql`
+        UPDATE cos_tenants
+        SET ui_show_tenant_wiki = ${show}, updated_at = NOW()
+        WHERE id = ${tenantId}::uuid
+      `;
     },
 
     async setOnboardingCompleted(userId: string): Promise<void> {
@@ -1597,26 +1632,42 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
           FROM cos_conversations
           WHERE user_id = ${userId}::uuid AND role = 'user'
           ORDER BY session_id, created_at ASC
+        ),
+        session_project AS (
+          SELECT DISTINCT ON (session_id)
+            session_id,
+            project_id
+          FROM cos_conversations
+          WHERE user_id = ${userId}::uuid AND project_id IS NOT NULL
+          ORDER BY session_id, created_at ASC
         )
         SELECT
           s.session_id::text,
           COALESCE(LEFT(fu.content, 80), '') AS preview,
           s.last_at AS last_activity,
-          s.message_count
+          s.message_count,
+          sp.project_id::text,
+          bp.name AS project_name
         FROM sess s
         LEFT JOIN first_user fu ON fu.session_id = s.session_id
+        LEFT JOIN session_project sp ON sp.session_id = s.session_id
+        LEFT JOIN brain_projects bp ON bp.id = sp.project_id
         ORDER BY s.last_at DESC
       ` as {
         session_id: string;
         preview: string;
         last_activity: Date;
         message_count: number;
+        project_id: string | null;
+        project_name: string | null;
       }[];
       return rows.map((r) => ({
         session_id: r.session_id,
         preview: r.preview,
         last_activity: r.last_activity,
         message_count: r.message_count,
+        project_id: r.project_id,
+        project_name: r.project_name,
       }));
     },
 

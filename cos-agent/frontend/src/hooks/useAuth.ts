@@ -7,6 +7,7 @@ export type MeUser = {
   name: string;
   email: string;
   role: string;
+  tenant_ui_show_tenant_wiki: boolean;
 };
 
 export function useAuth(): {

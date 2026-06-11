@@ -129,6 +129,7 @@ export class OrchestratorAgent {
     retryFeedback?: string;
     historyMessages: LlmMessage[];
     now?: () => Date;
+    preferredChatModel?: string;
   }): Promise<OrchestratorResult> {
     const now = params.now ?? this.nowFn;
     let retryCount = params.retryCount ?? 0;
@@ -296,6 +297,7 @@ export class OrchestratorAgent {
         results,
         context,
         complexity,
+        preferredChatModel: params.preferredChatModel,
       });
       lastContent = aggregated;
 

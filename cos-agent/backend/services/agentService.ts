@@ -1,5 +1,9 @@
 import { AggregatorAgent } from "../agents/aggregator.ts";
 import { estimateCost } from "../agents/modelSelector.ts";
+import {
+  resolveChatModelId,
+  type ChatModelKey,
+} from "./chatModels.ts";
 import { buildSystemPromptForUser } from "../agents/contextLoader.ts";
 import { OrchestratorAgent } from "../agents/orchestrator.ts";
 import { ValidatorAgent } from "../agents/validator.ts";
@@ -91,7 +95,9 @@ export class AgentService {
     message: string;
     tenantId?: string | null;
     projectId?: string | null;
+    preferredModel?: ChatModelKey;
   }): Promise<ChatResponse> {
+    const preferredChatModel = resolveChatModelId(params.preferredModel);
     const llmCalls: Array<
       { response: LlmResponse; latencyMs: number; model: string }
     > = [];
@@ -121,6 +127,7 @@ export class AgentService {
       projectId: params.projectId,
       historyMessages: history,
       now: this.nowFn,
+      preferredChatModel,
     });
 
     console.debug(
@@ -148,6 +155,7 @@ export class AgentService {
       params.sessionId,
       params.message,
       orch.content,
+      params.projectId,
     );
 
     const totalIn = llmCalls.reduce(
@@ -193,12 +201,14 @@ export class AgentService {
     sessionId: string,
     userMessage: string,
     assistantResponse: string,
+    projectId?: string | null,
   ): Promise<void> {
     await this.db.insertConversationMessage({
       userId,
       sessionId,
       role: "user",
       content: userMessage,
+      projectId,
     });
     await this.db.insertConversationMessage({
       userId,

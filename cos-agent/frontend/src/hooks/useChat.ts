@@ -2,12 +2,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api.ts";
 import { isLoggedIn } from "../lib/auth.ts";
+import type { ChatModelKey } from "../lib/chatModels.ts";
 
 export interface Session {
   session_id: string;
   preview: string;
   last_activity: string;
   message_count: number;
+  project_id: string | null;
+  project_name: string | null;
 }
 
 export interface Message {
@@ -34,6 +37,7 @@ type HistoryRow = {
 type SendMessageOptions = {
   complexityHigh?: boolean;
   projectId?: string | null;
+  model?: ChatModelKey;
 };
 
 const PHASES_NORMAL = [
@@ -106,7 +110,9 @@ export function useChat(): {
   /** Kurztext zu letztem Sendefehler (ApiError / Netzwerk), leer wenn keiner. */
   sendErrorDetail: string;
   sendMessage: (text: string, options?: SendMessageOptions) => Promise<void>;
-  startNewSession: () => void;
+  activeProjectId: string | null;
+  setActiveProjectId: (id: string | null) => void;
+  startNewSession: (projectId?: string | null) => void;
   selectSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
 } {
@@ -118,6 +124,7 @@ export function useChat(): {
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isReplyStreaming, setIsReplyStreaming] = useState(false);
@@ -152,13 +159,16 @@ export function useChat(): {
     return stopPhaseTimer;
   }, [isLoading, phaseMode, stopPhaseTimer]);
 
-  const startNewSession = useCallback(() => {
+  const startNewSession = useCallback((projectId?: string | null) => {
     runIdRef.current += 1;
     setCurrentSessionId(null);
     setMessages([]);
     setIsSendError(false);
     setSendErrorDetail("");
     setIsReplyStreaming(false);
+    if (projectId !== undefined) {
+      setActiveProjectId(projectId);
+    }
   }, []);
 
   const selectSession = useCallback(async (sessionId: string) => {
@@ -167,6 +177,10 @@ export function useChat(): {
     setIsSendError(false);
     setSendErrorDetail("");
     setCurrentSessionId(sessionId);
+    const sess = sessionsQuery.data?.find((s) => s.session_id === sessionId);
+    if (sess?.project_id) {
+      setActiveProjectId(sess.project_id);
+    }
     try {
       const data = await api.get<HistoryRow[]>(
         `/api/chat/history?session_id=${encodeURIComponent(sessionId)}&limit=50`,
@@ -178,7 +192,7 @@ export function useChat(): {
     } catch {
       setMessages([]);
     }
-  }, []);
+  }, [sessionsQuery.data]);
 
   const sendMessage = useCallback(
     async (text: string, options?: SendMessageOptions) => {
@@ -197,14 +211,23 @@ export function useChat(): {
       setIsLoading(true);
 
       try {
-        const body: { message: string; session_id?: string; project_id?: string } = {
+        const projectId = options?.projectId ?? activeProjectId;
+        const body: {
+          message: string;
+          session_id?: string;
+          project_id?: string;
+          model?: ChatModelKey;
+        } = {
           message: trimmed,
         };
         if (currentSessionId) {
           body.session_id = currentSessionId;
         }
-        if (options?.projectId) {
-          body.project_id = options.projectId;
+        if (projectId) {
+          body.project_id = projectId;
+        }
+        if (options?.model) {
+          body.model = options.model;
         }
 
         const data = await api.post<ChatPostResponse>("/api/chat", body);
@@ -292,7 +315,7 @@ export function useChat(): {
         setIsReplyStreaming(false);
       }
     },
-    [currentSessionId, queryClient, stopPhaseTimer],
+    [activeProjectId, currentSessionId, queryClient, stopPhaseTimer],
   );
 
   const deleteSession = useCallback(
@@ -319,6 +342,8 @@ export function useChat(): {
     isSendError,
     sendErrorDetail,
     sendMessage,
+    activeProjectId,
+    setActiveProjectId,
     startNewSession,
     selectSession,
     deleteSession,

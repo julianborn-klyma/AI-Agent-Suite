@@ -13,6 +13,8 @@ import {
   handleChatSessionDelete,
   handleChatSessionsGet,
 } from "./routes/chat.ts";
+import { handleChatModelsGet } from "./routes/chatModels.ts";
+import { handleAdminTenantUiPatch } from "./routes/admin/tenantUi.ts";
 import {
   handleAdminConfigAssign,
   handleAdminConfigDelete,
@@ -205,6 +207,10 @@ async function dispatchAdmin(
 
   if (pathname === "/api/admin/costs" && req.method === "GET") {
     return handleAdminCostsGet(req, env, deps);
+  }
+
+  if (pathname === "/api/admin/tenant/ui" && req.method === "PATCH") {
+    return handleAdminTenantUiPatch(req, env, deps);
   }
 
   // Firm Brain admin
@@ -465,6 +471,8 @@ export function createRequestHandler(
       } else {
         res = await handlePromptEngineerClassify(req, env, deps);
       }
+    } else if (url.pathname === "/api/chat/models" && req.method === "GET") {
+      res = await handleChatModelsGet(req, env);
     } else if (url.pathname === "/api/chat" && req.method === "POST") {
       if (!deps) {
         res = missingDepsResponse();

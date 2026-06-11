@@ -10,7 +10,7 @@ test.describe("Einstellungen / Verbindungen", () => {
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Einstellungen" })).toBeVisible();
     await expect(page.getByTestId("connections-title")).toBeVisible();
-    await expect(page.getByText("Google (Gmail + Drive)")).toBeVisible();
+    await expect(page.getByText(/Google \(Gmail \+ Drive/i)).toBeVisible();
     await expect(page.getByText(/Notion/i).first()).toBeVisible();
   });
 
