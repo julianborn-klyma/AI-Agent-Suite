@@ -101,6 +101,12 @@ import {
 } from "./routes/tasks.ts";
 import { dispatchWorkspace } from "./routes/workspace.ts";
 import { dispatchSuperAdmin } from "./routes/superadmin/tenants.ts";
+import { dispatchBrain } from "./routes/brain.ts";
+import {
+  handleAdminFirmBrainDelete,
+  handleAdminFirmBrainList,
+  handleAdminFirmBrainPatch,
+} from "./routes/admin/firmBrain.ts";
 
 function withCors(req: Request, env: AppEnv, res: Response): Response {
   const extra = corsHeaders(req, env);
@@ -199,6 +205,21 @@ async function dispatchAdmin(
 
   if (pathname === "/api/admin/costs" && req.method === "GET") {
     return handleAdminCostsGet(req, env, deps);
+  }
+
+  // Firm Brain admin
+  if (pathname === "/api/admin/firm-brain" && req.method === "GET") {
+    return handleAdminFirmBrainList(req, env, deps);
+  }
+
+  const firmBrainId = pathname.match(/^\/api\/admin\/firm-brain\/([^/]+)$/);
+  if (firmBrainId) {
+    if (req.method === "PATCH") {
+      return handleAdminFirmBrainPatch(req, env, deps, firmBrainId[1]!);
+    }
+    if (req.method === "DELETE") {
+      return handleAdminFirmBrainDelete(req, env, deps, firmBrainId[1]!);
+    }
   }
 
   return null;
@@ -385,6 +406,13 @@ export function createRequestHandler(
         res = missingDepsResponse();
       } else {
         res = await dispatchWorkspace(req, env, deps, url.pathname);
+      }
+    } else if (url.pathname.startsWith("/api/brain/")) {
+      if (!deps) {
+        res = missingDepsResponse();
+      } else {
+        res = await dispatchBrain(req, env, deps, url.pathname) ??
+          new Response("Not Found", { status: 404 });
       }
     } else if (url.pathname === "/api/tasks" && req.method === "POST") {
       if (!deps) {

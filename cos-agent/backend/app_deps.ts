@@ -13,6 +13,8 @@ import type { TaskQueueService } from "./services/taskQueueService.ts";
 import type { AuditService } from "./services/auditService.ts";
 import type { PasswordService } from "./services/passwordService.ts";
 import type { TenantService } from "./services/tenantService.ts";
+import type { BrainService } from "./services/brain/BrainService.ts";
+import type { FirmBrainService } from "./services/brain/FirmBrainService.ts";
 import type postgres from "postgres";
 
 export type AppDependencies = {
@@ -33,6 +35,8 @@ export type AppDependencies = {
   taskQueueService: TaskQueueService;
   passwordService: PasswordService;
   auditService: AuditService;
+  brainService: BrainService;
+  firmBrainService: FirmBrainService;
 };
 
 /**

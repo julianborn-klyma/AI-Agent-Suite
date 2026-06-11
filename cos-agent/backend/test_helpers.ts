@@ -18,6 +18,8 @@ import { TaskQueueService } from "./services/taskQueueService.ts";
 import { PasswordService } from "./services/passwordService.ts";
 import { AuditService } from "./services/auditService.ts";
 import { TenantService } from "./services/tenantService.ts";
+import { BrainService } from "./services/brain/BrainService.ts";
+import { FirmBrainService } from "./services/brain/FirmBrainService.ts";
 import { resolveTestDatabaseUrl } from "./test_database_url.ts";
 import type postgres from "postgres";
 
@@ -142,6 +144,8 @@ export type TestServerInputDeps = AppCoreDependencies &
       | "passwordService"
       | "auditService"
       | "tenantService"
+      | "brainService"
+      | "firmBrainService"
     >
   >;
 
@@ -200,12 +204,16 @@ export async function startTestServer(
           new BriefingDelivery(env),
         );
       const passwordService = core.passwordService ?? new PasswordService();
+      const brainService = core.brainService ?? new BrainService(core.db, core.llm);
+      const firmBrainService = core.firmBrainService ?? new FirmBrainService(core.db, core.llm);
       resolvedDeps = {
         ...withOauth,
         ...jobs,
         taskQueueService,
         passwordService,
         auditService,
+        brainService,
+        firmBrainService,
         ...(core.emailCategorizationService
           ? { emailCategorizationService: core.emailCategorizationService }
           : {}),
