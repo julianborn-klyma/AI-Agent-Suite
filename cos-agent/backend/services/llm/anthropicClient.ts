@@ -8,15 +8,17 @@ import type {
   LlmToolsInput,
 } from "./llmTypes.ts";
 import { LlmClientError } from "./llmTypes.ts";
+import { withLlmRequestGate } from "./llmRequestGate.ts";
+import { userFacingLlmError } from "./userFacingLlmError.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const TIMEOUT_MS = 60_000;
 /** Anthropic 529 = overload; 503/502 = gateway; 429 = rate limit — kurz warten und erneut versuchen. */
 const RETRYABLE_HTTP = new Set([529, 503, 502, 429]);
-const MAX_ANTHROPIC_ATTEMPTS = 6;
+const MAX_ANTHROPIC_ATTEMPTS = 8;
 const BASE_BACKOFF_MS = 2_000;
-const MAX_BACKOFF_MS = 32_000;
+const MAX_BACKOFF_MS = 60_000;
 
 type AnthropicContentBlock =
   | { type: "text"; text: string }
@@ -42,13 +44,34 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Exponentielles Backoff mit kleinem Jitter (vermeidet Thundering Herd). */
-function backoffMsAfterFailure(attemptIndex: number): number {
+function backoffMsAfterFailure(attemptIndex: number, status?: number): number {
+  const base = status === 429 ? 3_000 : BASE_BACKOFF_MS;
+  const cap = status === 429 ? MAX_BACKOFF_MS : 32_000;
   const exp = Math.min(
-    MAX_BACKOFF_MS,
-    BASE_BACKOFF_MS * 2 ** Math.min(attemptIndex, 5),
+    cap,
+    base * 2 ** Math.min(attemptIndex, 6),
   );
-  const jitter = Math.floor(Math.random() * 400);
+  const jitter = Math.floor(Math.random() * 500);
   return exp + jitter;
+}
+
+/** `Retry-After` (Sekunden oder HTTP-Datum) von Anthropic auswerten. */
+export function parseRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("retry-after")?.trim();
+  if (!raw) return null;
+  const sec = Number.parseInt(raw, 10);
+  if (Number.isFinite(sec) && sec >= 0) {
+    return Math.min(Math.max(sec, 1), 120) * 1000;
+  }
+  const when = Date.parse(raw);
+  if (Number.isFinite(when)) {
+    return Math.min(Math.max(when - Date.now(), 500), 120_000);
+  }
+  return null;
+}
+
+function waitBeforeRetry(res: Response, attemptIndex: number): number {
+  return parseRetryAfterMs(res) ?? backoffMsAfterFailure(attemptIndex, res.status);
 }
 
 function normalizeToolInput(input: unknown): Record<string, unknown> {
@@ -235,6 +258,10 @@ export class AnthropicClient implements LlmClient {
   constructor(private readonly apiKey: string) {}
 
   async chat(req: LlmRequest): Promise<LlmResponse> {
+    return await withLlmRequestGate(() => this.chatOnce(req));
+  }
+
+  private async chatOnce(req: LlmRequest): Promise<LlmResponse> {
     const body: Record<string, unknown> = {
       model: req.model,
       max_tokens: 4096,
@@ -274,7 +301,8 @@ export class AnthropicClient implements LlmClient {
     let res = await fetchOnce();
     let retryIdx = 0;
     while (!res.ok && RETRYABLE_HTTP.has(res.status) && retryIdx < MAX_ANTHROPIC_ATTEMPTS - 1) {
-      const wait = backoffMsAfterFailure(retryIdx);
+      const wait = waitBeforeRetry(res, retryIdx);
+      await res.body?.cancel();
       await sleep(wait);
       retryIdx++;
       res = await fetchOnce();
@@ -282,15 +310,13 @@ export class AnthropicClient implements LlmClient {
 
     const text = await res.text();
     if (!res.ok) {
-      const hint = res.status === 529
-        ? " (Anthropic meldet Überlast — bitte in ein paar Sekunden erneut versuchen.)"
-        : res.status === 429
-        ? " (Rate-Limit — kurz warten und erneut versuchen.)"
-        : "";
+      const internal = `Anthropic /v1/messages fehlgeschlagen: HTTP ${res.status}`;
       throw new LlmClientError(
         res.status,
-        `Anthropic /v1/messages fehlgeschlagen: HTTP ${res.status}${hint}`,
-        text.slice(0, 500),
+        RETRYABLE_HTTP.has(res.status)
+          ? userFacingLlmError(res.status)
+          : internal,
+        `${internal}\n${text.slice(0, 500)}`,
       );
     }
 

@@ -2,6 +2,10 @@ import type { AppDependencies } from "../app_deps.ts";
 import type { DatabaseClient } from "../db/databaseClient.ts";
 import { parseChatModelKey } from "./chatModels.ts";
 import { LlmClientError } from "./llm/llmTypes.ts";
+import {
+  isRetryableLlmStatus,
+  userFacingLlmError,
+} from "./llm/userFacingLlmError.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -80,36 +84,53 @@ export async function postChat(
   const tenant = await deps.db.getTenantForUser(userId);
   const tenantId = tenant?.id ?? null;
 
-  try {
-    const out = await deps.agentService.chat({
-      userId,
-      sessionId,
-      message: trimmed,
-      tenantId,
-      projectId,
-      preferredModel: modelParsed.key,
-    });
-    return {
-      ok: true,
-      data: {
-        response: out.content,
-        session_id: sessionId,
-        tool_calls_made: out.tool_calls_made,
-      },
-    };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Chat fehlgeschlagen.";
-    if (e instanceof LlmClientError) {
-      const s = e.status;
-      if (s === 529 || s === 503 || s === 502) {
-        return { ok: false, status: 503, error: msg };
+  const chatParams = {
+    userId,
+    sessionId,
+    message: trimmed,
+    tenantId,
+    projectId,
+    preferredModel: modelParsed.key,
+  };
+
+  const CHAT_LLM_RETRIES = 2;
+  const CHAT_LLM_RETRY_PAUSE_MS = 8_000;
+
+  for (let attempt = 0; attempt < CHAT_LLM_RETRIES; attempt++) {
+    try {
+      const out = await deps.agentService.chat(chatParams);
+      return {
+        ok: true,
+        data: {
+          response: out.content,
+          session_id: sessionId,
+          tool_calls_made: out.tool_calls_made,
+        },
+      };
+    } catch (e) {
+      const retryable = e instanceof LlmClientError && isRetryableLlmStatus(e.status);
+      if (retryable && attempt < CHAT_LLM_RETRIES - 1) {
+        await new Promise((r) => setTimeout(r, CHAT_LLM_RETRY_PAUSE_MS));
+        continue;
       }
-      if (s === 429) {
-        return { ok: false, status: 429, error: msg };
+      if (e instanceof LlmClientError) {
+        const s = e.status;
+        return {
+          ok: false,
+          status: isRetryableLlmStatus(s) ? 503 : 500,
+          error: userFacingLlmError(s),
+        };
       }
+      const msg = e instanceof Error ? e.message : "Chat fehlgeschlagen.";
+      return { ok: false, status: 500, error: msg };
     }
-    return { ok: false, status: 500, error: msg };
   }
+
+  return {
+    ok: false,
+    status: 503,
+    error: userFacingLlmError(529),
+  };
 }
 
 export type HistoryQueryParse =

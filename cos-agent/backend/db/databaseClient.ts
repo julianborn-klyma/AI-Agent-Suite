@@ -1198,7 +1198,7 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
           ${params.role},
           ${params.content},
           NULL,
-          ${projectId}::uuid
+          ${projectId ? sql`${projectId}::uuid` : sql`NULL`}
         )
       `;
     },
@@ -3115,15 +3115,15 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
     async getBrainEntriesForProject(projectId, options) {
       const activeOnly = options?.activeOnly ?? true;
       const limit = options?.limit ?? 200;
-      const type = options?.type ?? null;
+      const type = options?.type;
       return await sql`
         SELECT id::text, project_id::text, tenant_id::text, created_by::text,
                type, content, source, confidence, tags, expires_at,
                is_active, created_at, updated_at
         FROM brain_entries
         WHERE project_id = ${projectId}::uuid
-          AND (${!activeOnly} OR is_active = true)
-          AND (${type} IS NULL OR type = ${type})
+          ${activeOnly ? sql`AND is_active = true` : sql``}
+          ${type ? sql`AND type = ${type}` : sql``}
           AND (expires_at IS NULL OR expires_at > NOW())
         ORDER BY created_at DESC
         LIMIT ${limit}
@@ -3335,9 +3335,9 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
     async listFirmInsights(params) {
       const limit = params.limit ?? 100;
       const offset = params.offset ?? 0;
-      const category = params.category ?? null;
-      const adminSuppressed = params.adminSuppressed ?? null;
-      const sourceProjectId = params.sourceProjectId ?? null;
+      const category = params.category;
+      const adminSuppressed = params.adminSuppressed;
+      const sourceProjectId = params.sourceProjectId;
       return await sql`
         SELECT
           id::text, tenant_id::text, source_project_id::text, source_user_id::text,
@@ -3345,9 +3345,17 @@ export function createPostgresDatabaseClient(sql: PgSql): DatabaseClient {
           is_active, admin_suppressed, created_at, updated_at
         FROM firm_insights
         WHERE tenant_id = ${params.tenantId}::uuid
-          AND (${category} IS NULL OR category = ${category})
-          AND (${adminSuppressed} IS NULL OR admin_suppressed = ${adminSuppressed})
-          AND (${sourceProjectId}::uuid IS NULL OR source_project_id = ${sourceProjectId}::uuid)
+          ${category ? sql`AND category = ${category}` : sql``}
+          ${
+        adminSuppressed !== undefined
+          ? sql`AND admin_suppressed = ${adminSuppressed}`
+          : sql``
+      }
+          ${
+        sourceProjectId
+          ? sql`AND source_project_id = ${sourceProjectId}::uuid`
+          : sql``
+      }
         ORDER BY created_at DESC
         LIMIT ${limit} OFFSET ${offset}
       ` as FirmInsight[];

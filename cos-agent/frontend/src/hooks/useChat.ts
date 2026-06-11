@@ -62,6 +62,9 @@ function formatSendFailureDetail(err: unknown): string {
     try {
       const j = JSON.parse(err.message) as { error?: string };
       if (typeof j.error === "string" && j.error.trim()) {
+        if (err.status === 503 || err.status === 429) {
+          return j.error;
+        }
         return `HTTP ${err.status}: ${j.error}`;
       }
     } catch {
