@@ -4,6 +4,9 @@ import type { LlmClient, LlmMessage } from "../services/llm/llmTypes.ts";
 import type { ToolExecutor } from "../services/tools/toolExecutor.ts";
 import { MODEL_IDS } from "./modelSelector.ts";
 import { loadAgentContext } from "./contextLoader.ts";
+import type { BrainContextParams } from "./contextLoader.ts";
+import type { BrainService } from "../services/brain/BrainService.ts";
+import type { FirmBrainService } from "../services/brain/FirmBrainService.ts";
 import { parseJsonObject } from "./jsonUtils.ts";
 import type {
   AgentContext,
@@ -92,6 +95,10 @@ export class OrchestratorAgent {
     private readonly learningService: LearningService,
     learningLlm: LlmClient,
     private readonly documentService: DocumentService,
+    private readonly brainDeps?: {
+      brainService?: BrainService;
+      firmBrainService?: FirmBrainService;
+    },
   ) {
     this.promptEngineer = new PromptEngineerService(llm);
     this.agents = new Map<string, BaseSubAgent>([
@@ -116,6 +123,8 @@ export class OrchestratorAgent {
     userId: string;
     sessionId: string;
     message: string;
+    tenantId?: string | null;
+    projectId?: string | null;
     retryCount?: number;
     retryFeedback?: string;
     historyMessages: LlmMessage[];
@@ -129,11 +138,23 @@ export class OrchestratorAgent {
     let lastContent = "";
     let path: OrchestratorResult["path"] = "orchestrated";
 
+    const brainParams: BrainContextParams | undefined =
+      params.tenantId && this.brainDeps
+        ? {
+          projectId: params.projectId,
+          tenantId: params.tenantId,
+          userMessage: params.message,
+          brainService: this.brainDeps.brainService,
+          firmBrainService: this.brainDeps.firmBrainService,
+        }
+        : undefined;
+
     while (true) {
       const context = await this.loadContext(
         params.userId,
         params.historyMessages,
         now,
+        brainParams,
       );
       if (retryFeedback) {
         context.learnings = [
@@ -176,6 +197,14 @@ export class OrchestratorAgent {
               error: err instanceof Error ? err.message : String(err),
             })
           );
+          this.fireFirmBrainAsync({
+            tenantId: params.tenantId,
+            userId: params.userId,
+            projectId: params.projectId,
+            sessionId: params.sessionId,
+            messages: conversationMessages.slice(-12),
+            agentResults: [],
+          });
           break;
         }
       }
@@ -215,6 +244,14 @@ export class OrchestratorAgent {
             error: err instanceof Error ? err.message : String(err),
           })
         );
+        this.fireFirmBrainAsync({
+          tenantId: params.tenantId,
+          userId: params.userId,
+          projectId: params.projectId,
+          sessionId: params.sessionId,
+          messages: conversationMessages.slice(-12),
+          agentResults: [],
+        });
         break;
       }
 
@@ -302,6 +339,14 @@ export class OrchestratorAgent {
             error: err instanceof Error ? err.message : String(err),
           })
         );
+        this.fireFirmBrainAsync({
+          tenantId: params.tenantId,
+          userId: params.userId,
+          projectId: params.projectId,
+          sessionId: params.sessionId,
+          messages: conversationMessages.slice(-12),
+          agentResults: results,
+        });
       }
 
       break;
@@ -343,6 +388,7 @@ export class OrchestratorAgent {
     userId: string,
     historyMessages: LlmMessage[],
     now: () => Date,
+    brainParams?: BrainContextParams,
   ): Promise<AgentContext> {
     return await loadAgentContext(
       this.db,
@@ -351,6 +397,33 @@ export class OrchestratorAgent {
       historyMessages,
       this.learningService,
       this.documentService,
+      brainParams,
+    );
+  }
+
+  private fireFirmBrainAsync(params: {
+    tenantId?: string | null;
+    userId: string;
+    projectId?: string | null;
+    sessionId: string;
+    messages: Array<{ role: string; content: string }>;
+    agentResults: SubAgentResult[];
+  }): void {
+    if (!this.brainDeps?.firmBrainService || !params.tenantId) return;
+    void this.brainDeps.firmBrainService.extractFromChat({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      projectId: params.projectId,
+      sessionId: params.sessionId,
+      messages: params.messages,
+      agentResults: params.agentResults,
+    }).catch((err) =>
+      console.error({
+        level: "error",
+        job: "firm-brain",
+        userId: params.userId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     );
   }
 

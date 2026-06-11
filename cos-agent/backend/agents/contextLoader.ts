@@ -3,6 +3,9 @@ import type { DocumentService } from "../services/documentService.ts";
 import type { LearningService } from "../services/learningService.ts";
 import type { LlmMessage } from "../services/llm/llmTypes.ts";
 import type { AgentContext, LearningCandidate, UserContextRow } from "./types.ts";
+import type { BrainService } from "../services/brain/BrainService.ts";
+import type { FirmBrainService } from "../services/brain/FirmBrainService.ts";
+import type { BrainEntry, FirmInsight } from "../db/databaseClient.ts";
 
 function formatGermanDateTime(date: Date): string {
   const timeZone = "Europe/Berlin";
@@ -31,6 +34,40 @@ function formatGermanDateTime(date: Date): string {
   return `${weekday}, ${day}. ${month} ${year}, ${hm} Uhr`;
 }
 
+export interface BrainContextParams {
+  projectId?: string | null;
+  tenantId?: string | null;
+  userMessage?: string;
+  brainService?: BrainService;
+  firmBrainService?: FirmBrainService;
+}
+
+const ENTRY_TYPE_LABELS: Record<string, string> = {
+  fact: "Fakt",
+  decision: "Entscheidung",
+  preference: "Präferenz",
+  context: "Kontext",
+  process: "Prozess",
+};
+
+function formatProjectContext(entries: BrainEntry[]): string {
+  const lines = entries.map((e) => {
+    const date = new Date(e.created_at).toLocaleDateString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const label = ENTRY_TYPE_LABELS[e.type] ?? e.type;
+    return `• ${label} (${date}): ${e.content}`;
+  });
+  return `[PROJEKT-WISSEN]\n${lines.join("\n")}\n[/PROJEKT-WISSEN]`;
+}
+
+function formatFirmContext(insights: FirmInsight[]): string {
+  const lines = insights.map((i) => `• ${i.content}`);
+  return `[FIRMEN-KONTEXT]\n${lines.join("\n")}\n[/FIRMEN-KONTEXT]`;
+}
+
 function buildUserContextBlock(rows: UserContextRow[]): string {
   return rows.map((r) => `${r.key}: ${r.value}`).join("\n");
 }
@@ -56,6 +93,7 @@ export async function loadAgentContext(
   recentHistory: LlmMessage[],
   learningService?: LearningService,
   documentService?: DocumentService,
+  brainParams?: BrainContextParams,
 ): Promise<AgentContext> {
   const config = await db.findAgentConfigForUser(userId);
   if (config === null || config.system_prompt.trim() === "") {
@@ -94,6 +132,49 @@ export async function loadAgentContext(
   }
   if (documentBlock.trim()) {
     block = block.trim() ? `${block}\n\n${documentBlock}` : documentBlock;
+  }
+
+  // Project Knowledge: curated entries from the project the user is chatting in
+  if (
+    brainParams?.projectId &&
+    brainParams.brainService &&
+    brainParams.userMessage
+  ) {
+    try {
+      const entries = await brainParams.brainService.getContextForAgent(
+        [brainParams.projectId],
+        userId,
+        brainParams.userMessage,
+        10,
+      );
+      if (entries.length > 0) {
+        const projectBlock = formatProjectContext(entries);
+        block = block.trim() ? `${block}\n\n${projectBlock}` : projectBlock;
+      }
+    } catch {
+      // Non-fatal — brain context is best-effort
+    }
+  }
+
+  // Firm Brain: auto-extracted tenant-wide insights (semantic search)
+  if (
+    brainParams?.firmBrainService &&
+    brainParams.tenantId &&
+    brainParams.userMessage
+  ) {
+    try {
+      const insights = await brainParams.firmBrainService.getRelevantInsights(
+        brainParams.tenantId,
+        brainParams.userMessage,
+        5,
+      );
+      if (insights.length > 0) {
+        const firmBlock = formatFirmContext(insights);
+        block = block.trim() ? `${block}\n\n${firmBlock}` : firmBlock;
+      }
+    } catch {
+      // Non-fatal
+    }
   }
 
   const nowFormatted = formatGermanDateTime(now());

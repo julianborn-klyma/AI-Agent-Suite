@@ -18,6 +18,8 @@ import { TaskQueueService } from "./services/taskQueueService.ts";
 import { PasswordService } from "./services/passwordService.ts";
 import { AuditService } from "./services/auditService.ts";
 import { TenantService } from "./services/tenantService.ts";
+import { BrainService } from "./services/brain/BrainService.ts";
+import { FirmBrainService } from "./services/brain/FirmBrainService.ts";
 import postgres from "postgres";
 
 const env = await loadEnv();
@@ -28,8 +30,12 @@ const db = createPostgresDatabaseClient(sql);
 const llm = new AnthropicClient(env.anthropicApiKey);
 const toolExecutor = new ToolExecutor(sql);
 const documentService = new DocumentService(db, llm);
+const brainService = new BrainService(db, llm);
+const firmBrainService = new FirmBrainService(db, llm);
 const agentService = new AgentService(db, llm, toolExecutor, {
   documentService,
+  brainService,
+  firmBrainService,
 });
 const auditService = new AuditService(db);
 const tenantService = new TenantService(db, auditService);
@@ -78,6 +84,8 @@ const deps = {
   documentService,
   sql,
   llm,
+  brainService,
+  firmBrainService,
   toolExecutor,
   tenantService,
   oauthService,

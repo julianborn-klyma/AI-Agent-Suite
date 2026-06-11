@@ -66,11 +66,21 @@ export async function postChat(
     sessionId = crypto.randomUUID();
   }
 
+  const projectId =
+    typeof o.project_id === "string" && UUID_RE.test(o.project_id)
+      ? o.project_id
+      : null;
+
+  const tenant = await deps.db.getTenantForUser(userId);
+  const tenantId = tenant?.id ?? null;
+
   try {
     const out = await deps.agentService.chat({
       userId,
       sessionId,
       message: trimmed,
+      tenantId,
+      projectId,
     });
     return {
       ok: true,

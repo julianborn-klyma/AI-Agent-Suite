@@ -13,6 +13,8 @@ import type {
   LlmResponse,
 } from "./llm/llmTypes.ts";
 import type { ToolExecutor } from "./tools/toolExecutor.ts";
+import type { BrainService } from "./brain/BrainService.ts";
+import type { FirmBrainService } from "./brain/FirmBrainService.ts";
 
 export type ChatResponse = {
   content: string;
@@ -29,6 +31,8 @@ export type AgentServiceOptions = {
   now?: () => Date;
   /** Geteilter DocumentService (z. B. mit AppDependencies). */
   documentService?: DocumentService;
+  brainService?: BrainService;
+  firmBrainService?: FirmBrainService;
 };
 
 function wrapLlmWithCallLog(
@@ -53,6 +57,8 @@ export class AgentService {
   private readonly nowFn: () => Date;
   private readonly learningService: LearningService;
   private readonly documentService: DocumentService;
+  private readonly brainService?: BrainService;
+  private readonly firmBrainService?: FirmBrainService;
 
   constructor(
     private readonly db: DatabaseClient,
@@ -64,6 +70,8 @@ export class AgentService {
     this.learningService = new LearningService(this.db, this.llm);
     this.documentService = opts?.documentService ??
       new DocumentService(this.db, this.llm);
+    this.brainService = opts?.brainService;
+    this.firmBrainService = opts?.firmBrainService;
   }
 
   /** Aufgelöster System-Prompt (Tests & Admin). */
@@ -81,6 +89,8 @@ export class AgentService {
     userId: string;
     sessionId: string;
     message: string;
+    tenantId?: string | null;
+    projectId?: string | null;
   }): Promise<ChatResponse> {
     const llmCalls: Array<
       { response: LlmResponse; latencyMs: number; model: string }
@@ -99,6 +109,7 @@ export class AgentService {
       this.learningService,
       this.llm,
       this.documentService,
+      { brainService: this.brainService, firmBrainService: this.firmBrainService },
     );
 
     const history = await this.loadHistory(params.userId, params.sessionId);
@@ -106,6 +117,8 @@ export class AgentService {
       userId: params.userId,
       sessionId: params.sessionId,
       message: params.message,
+      tenantId: params.tenantId,
+      projectId: params.projectId,
       historyMessages: history,
       now: this.nowFn,
     });
