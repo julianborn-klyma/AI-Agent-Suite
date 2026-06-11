@@ -387,6 +387,115 @@ Deno.test({
   },
 });
 
+// ── Chat with project_id ─────────────────────────────────────────────────────
+
+Deno.test({
+  name: "E2E brain — chat with project_id passes through without error",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const url = resolveTestDatabaseUrl();
+    await runMigrations(url);
+    const sql = postgres(url, { max: 3 });
+
+    const tidRows = await sql`SELECT id::text AS id FROM cos_tenants WHERE slug = 'klyma' LIMIT 1` as {
+      id: string;
+    }[];
+    const tenantId = tidRows[0]!.id;
+
+    const ownerUid = await insertUser(sql, tenantId, "br-chat-owner");
+
+    try {
+      // FakeLlm that returns a valid chat response (not JSON-array like the brain FakeLlm)
+      class FakeChatLlm implements LlmClient {
+        async chat(_req: LlmRequest): Promise<LlmResponse> {
+          return {
+            content: "Chat-Antwort mit Projekt-Kontext.",
+            input_tokens: 5,
+            output_tokens: 8,
+            stop_reason: "end_turn",
+          };
+        }
+      }
+
+      const db = createPostgresDatabaseClient(sql);
+      const llm = new FakeChatLlm();
+      const toolExecutor = new ToolExecutor();
+      const { agentService, documentService } = createAgentAndDocument(db, llm, toolExecutor);
+      const { baseUrl, shutdown } = await startTestServer(
+        baseTestEnv({ DATABASE_URL: url }),
+        { db, agentService, documentService, sql, llm, toolExecutor },
+      );
+
+      try {
+        const ownerToken = await mintJwt(ownerUid);
+        const auth = { Authorization: `Bearer ${ownerToken}` };
+
+        // Ensure agent config template exists
+        await sql`
+          INSERT INTO agent_configs (agent_key, system_prompt, is_template)
+          VALUES ('chat-brain-test', 'Du bist ein Assistent. {{USER_CONTEXT}}{{NOW}}', true)
+          ON CONFLICT (agent_key) DO UPDATE SET
+            system_prompt = EXCLUDED.system_prompt,
+            is_template = EXCLUDED.is_template
+        `;
+
+        // Create a project so the project_id is valid
+        const createRes = await fetch(`${baseUrl}/api/brain/projects`, {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Chat-Test Projekt" }),
+        });
+        assertEquals(createRes.status, 201);
+        const project = await createRes.json() as { id: string };
+        const projectId = project.id;
+
+        // POST /api/chat with project_id — should return 200 without error
+        const chatRes = await fetch(`${baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "Was weiß das Projekt?",
+            project_id: projectId,
+          }),
+        });
+        assertEquals(chatRes.status, 200);
+        const chatData = await chatRes.json() as {
+          response: string;
+          session_id: string;
+          tool_calls_made: string[];
+        };
+        assertEquals(typeof chatData.response, "string");
+        assertEquals(typeof chatData.session_id, "string");
+
+        // POST /api/chat with invalid project_id UUID still returns 200
+        // (invalid UUID is treated as null, not an error)
+        const chatNoProject = await fetch(`${baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "Normale Frage ohne Projekt.",
+            project_id: "not-a-uuid",
+          }),
+        });
+        assertEquals(chatNoProject.status, 200);
+        await chatNoProject.json();
+
+        // Clean up project
+        await fetch(`${baseUrl}/api/brain/projects/${projectId}`, {
+          method: "DELETE",
+          headers: auth,
+        });
+      } finally {
+        shutdown();
+      }
+    } finally {
+      await sql`DELETE FROM cos_users WHERE id = ${ownerUid}::uuid`;
+      await sql.end({ timeout: 5 });
+    }
+  },
+});
+
 // ── Unauthenticated requests ──────────────────────────────────────────────────
 
 Deno.test({
