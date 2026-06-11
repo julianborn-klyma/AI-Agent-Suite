@@ -5,6 +5,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { PromptEngineerPanel } from "../components/PromptEngineerPanel.tsx";
 import { useAuth } from "../hooks/useAuth.ts";
 import { useChat } from "../hooks/useChat.ts";
+import { useBrainProjects } from "../hooks/useBrain.ts";
 import { api } from "../lib/api.ts";
 import { relativeTime } from "../lib/time.ts";
 
@@ -54,6 +55,8 @@ export function ChatPage() {
   const [pePanelKey, setPePanelKey] = useState(0);
   const [complexityHigh, setComplexityHigh] = useState(false);
   const [hoverSessionId, setHoverSessionId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const projectsQ = useBrainProjects();
   const [now, setNow] = useState(() => new Date());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -121,7 +124,7 @@ export function ChatPage() {
     const t = input.trim();
     if (!t || isBusy) return;
     setInput("");
-    await sendMessage(t, { complexityHigh });
+    await sendMessage(t, { complexityHigh, projectId: selectedProjectId });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -199,6 +202,41 @@ export function ChatPage() {
           >
             Daily Check-in
           </Link>
+          {(projectsQ.data?.length ?? 0) > 0 && (
+            <div style={{ marginTop: "0.55rem" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.72rem",
+                  color: "var(--muted)",
+                  marginBottom: "0.25rem",
+                  paddingLeft: "0.1rem",
+                }}
+              >
+                Projekt-Kontext
+              </label>
+              <select
+                value={selectedProjectId ?? ""}
+                onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                style={{
+                  width: "100%",
+                  padding: "0.35rem 0.5rem",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontSize: "0.82rem",
+                }}
+              >
+                <option value="">Kein Projekt</option>
+                {(projectsQ.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div
           style={{

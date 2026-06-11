@@ -33,6 +33,7 @@ type HistoryRow = {
 
 type SendMessageOptions = {
   complexityHigh?: boolean;
+  projectId?: string | null;
 };
 
 const PHASES_NORMAL = [
@@ -196,11 +197,14 @@ export function useChat(): {
       setIsLoading(true);
 
       try {
-        const body: { message: string; session_id?: string } = {
+        const body: { message: string; session_id?: string; project_id?: string } = {
           message: trimmed,
         };
         if (currentSessionId) {
           body.session_id = currentSessionId;
+        }
+        if (options?.projectId) {
+          body.project_id = options.projectId;
         }
 
         const data = await api.post<ChatPostResponse>("/api/chat", body);

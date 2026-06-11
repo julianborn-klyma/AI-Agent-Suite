@@ -131,6 +131,9 @@ export function Layout() {
           <NavLink to="/workspace/wiki" style={navLinkStyle}>
             Wiki
           </NavLink>
+          <NavLink to="/brain" style={navLinkStyle}>
+            Brain & Projekte
+          </NavLink>
           <div
             style={{
               margin: "0.75rem 0 0.35rem",
@@ -171,6 +174,9 @@ export function Layout() {
               </NavLink>
               <NavLink to="/admin/costs" style={navLinkStyle}>
                 Costs
+              </NavLink>
+              <NavLink to="/admin/firm-brain" style={navLinkStyle}>
+                Firm Brain
               </NavLink>
             </>
           )}

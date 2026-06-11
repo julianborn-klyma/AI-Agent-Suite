@@ -33,6 +33,9 @@ import { SuperAdminLayout } from "./pages/superadmin/SuperAdminLayout.tsx";
 import { SystemStatusPage } from "./pages/superadmin/SystemStatusPage.tsx";
 import { TenantDetailPage } from "./pages/superadmin/TenantDetailPage.tsx";
 import { TenantsPage } from "./pages/superadmin/TenantsPage.tsx";
+import { BrainPage } from "./pages/BrainPage.tsx";
+import { BrainProjectPage } from "./pages/BrainProjectPage.tsx";
+import { FirmBrainPage } from "./pages/admin/FirmBrainPage.tsx";
 
 function RootRedirect() {
   return <Navigate to={isLoggedIn() ? "/chat" : "/login"} replace />;
@@ -69,6 +72,8 @@ export function App() {
           <Route path="settings/schedules" element={<SettingsSchedulesPage />} />
           <Route path="settings/learnings" element={<SettingsLearningsPage />} />
           <Route path="settings/email-style" element={<EmailStylePage />} />
+          <Route path="brain" element={<BrainPage />} />
+          <Route path="brain/:id" element={<BrainProjectPage />} />
           <Route path="admin" element={<RequireAdmin />}>
             <Route element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
@@ -77,6 +82,7 @@ export function App() {
               <Route path="configs" element={<ConfigsPage />} />
               <Route path="schedules" element={<SchedulesPage />} />
               <Route path="costs" element={<CostsPage />} />
+              <Route path="firm-brain" element={<FirmBrainPage />} />
             </Route>
           </Route>
           </Route>
